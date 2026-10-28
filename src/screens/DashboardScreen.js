@@ -1,0 +1,221 @@
+import { Link, useFocusEffect } from 'expo-router';
+import { useCallback, useEffect, useState } from 'react';
+import { ActivityIndicator, Alert, Linking, Pressable, StyleSheet, Text, View } from 'react-native';
+import { SafeAreaView } from 'react-native-safe-area-context';
+
+import { useSettings } from '../context/SettingsContext';
+import { resumeActiveTrip, startTrip, stopTrip } from '../services/locationService';
+import { getActiveTrip } from '../storage/tripStorage';
+import { colors, radius, spacing } from '../theme';
+import {
+  distanceUnit,
+  formatDuration,
+  formatElevation,
+  speedUnit,
+  toDistance,
+  toSpeed,
+} from '../utils/format';
+import { liveMetrics } from '../utils/geoMath';
+
+const GOOGLE_MAPS_NAV_URL = 'https://www.google.com/maps/dir/?api=1&travelmode=driving';
+const REFRESH_MS = 1000;
+
+function Metric({ label, value, unit, large }) {
+  return (
+    <View style={[styles.metric, large && styles.metricLarge]}>
+      <Text style={styles.metricLabel}>{label}</Text>
+      <Text style={[styles.metricValue, large && styles.metricValueLarge]} numberOfLines={1} adjustsFontSizeToFit>
+        {value}
+        {unit ? <Text style={styles.metricUnit}> {unit}</Text> : null}
+      </Text>
+    </View>
+  );
+}
+
+export default function DashboardScreen() {
+  const { units } = useSettings();
+  const [trip, setTrip] = useState(null);
+  const [now, setNow] = useState(Date.now());
+  const [busy, setBusy] = useState(false);
+  const [foregroundOnly, setForegroundOnly] = useState(false);
+
+  // Restart tracking if the app was killed mid-trip.
+  useEffect(() => {
+    resumeActiveTrip()
+      .then((res) => res && setForegroundOnly(!res.background))
+      .catch((err) => console.warn('[dashboard] resume failed', err));
+  }, []);
+
+  // The background task writes to SQLite; poll it once a second while visible.
+  useFocusEffect(
+    useCallback(() => {
+      let cancelled = false;
+      const tick = async () => {
+        const active = await getActiveTrip();
+        if (!cancelled) {
+          setTrip(active);
+          setNow(Date.now());
+        }
+      };
+      tick();
+      const id = setInterval(tick, REFRESH_MS);
+      return () => {
+        cancelled = true;
+        clearInterval(id);
+      };
+    }, [])
+  );
+
+  const onToggle = async () => {
+    setBusy(true);
+    try {
+      if (trip) {
+        await stopTrip();
+        setTrip(null);
+        setForegroundOnly(false);
+      } else {
+        const res = await startTrip();
+        setTrip(res.trip);
+        setForegroundOnly(!res.background);
+      }
+    } catch (err) {
+      Alert.alert('Location', err.message);
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const openGoogleMaps = () =>
+    Linking.openURL(GOOGLE_MAPS_NAV_URL).catch(() =>
+      Alert.alert('Google Maps', 'Could not open Google Maps.')
+    );
+
+  const live = trip ? liveMetrics(trip, now) : null;
+  const active = Boolean(trip);
+
+  return (
+    <SafeAreaView style={styles.screen} edges={['bottom']}>
+      <View style={styles.status}>
+        <View style={[styles.dot, { backgroundColor: active ? colors.start : colors.textMuted }]} />
+        <Text style={styles.statusText}>
+          {!active
+            ? 'Ready'
+            : live.isAutoPaused
+              ? 'Auto-paused · rest stop'
+              : live.hasFix
+                ? 'Recording'
+                : 'Waiting for GPS…'}
+        </Text>
+      </View>
+
+      {foregroundOnly && active ? (
+        <Text style={styles.warning}>
+          Expo Go: tracking only while the app is open. Use a development build for background
+          tracking.
+        </Text>
+      ) : null}
+
+      <Metric
+        large
+        label="CURRENT SPEED"
+        value={live ? Math.round(toSpeed(live.currentSpeedMps, units)) : 0}
+        unit={speedUnit(units)}
+      />
+      <View style={styles.grid}>
+        <Metric
+          label="DISTANCE"
+          value={toDistance(live?.distanceM ?? 0, units).toFixed(2)}
+          unit={distanceUnit(units)}
+        />
+        <Metric label="ELAPSED" value={live ? formatDuration(live.elapsedMs) : '0:00'} />
+      </View>
+      <View style={styles.grid}>
+        <Metric label="ELEVATION" value={live ? formatElevation(live.currentAltitudeM, units) : '—'} />
+        <Metric label="SINCE BREAK" value={live ? formatDuration(live.stintMs) : '—'} />
+      </View>
+
+      <View style={styles.spacer} />
+
+      <Pressable
+        onPress={onToggle}
+        disabled={busy}
+        style={({ pressed }) => [
+          styles.toggle,
+          { backgroundColor: active ? colors.stop : colors.start },
+          pressed && styles.pressed,
+        ]}
+        accessibilityRole="button"
+      >
+        {busy ? (
+          <ActivityIndicator color="#fff" />
+        ) : (
+          <Text style={styles.toggleText}>{active ? 'STOP TRIP' : 'START TRIP'}</Text>
+        )}
+      </Pressable>
+
+      <Pressable
+        onPress={openGoogleMaps}
+        style={({ pressed }) => [styles.secondary, pressed && styles.pressed]}
+        accessibilityRole="link"
+      >
+        <Text style={styles.secondaryText}>Open Google Maps Navigation</Text>
+      </Pressable>
+      <Link href="/trips" asChild>
+        <Pressable style={({ pressed }) => [styles.secondary, pressed && styles.pressed]}>
+          <Text style={styles.secondaryText}>Past Trips</Text>
+        </Pressable>
+      </Link>
+    </SafeAreaView>
+  );
+}
+
+const styles = StyleSheet.create({
+  screen: { flex: 1, backgroundColor: colors.background, padding: spacing.md, gap: spacing.sm },
+  status: { flexDirection: 'row', alignItems: 'center', gap: spacing.sm, marginBottom: spacing.xs },
+  dot: { width: 10, height: 10, borderRadius: 5 },
+  statusText: { color: colors.textMuted, fontSize: 15, fontWeight: '600' },
+  warning: {
+    color: colors.accent,
+    fontSize: 13,
+    backgroundColor: colors.surface,
+    padding: spacing.sm,
+    borderRadius: radius.md,
+  },
+  grid: { flexDirection: 'row', gap: spacing.sm },
+  metric: {
+    flex: 1,
+    backgroundColor: colors.surface,
+    borderRadius: radius.md,
+    padding: spacing.md,
+    borderWidth: StyleSheet.hairlineWidth,
+    borderColor: colors.border,
+  },
+  metricLarge: { flex: 0, alignItems: 'center', paddingVertical: spacing.lg },
+  metricLabel: { color: colors.textMuted, fontSize: 12, fontWeight: '700', letterSpacing: 1 },
+  metricValue: {
+    color: colors.text,
+    fontSize: 30,
+    fontWeight: '700',
+    marginTop: spacing.xs,
+    fontVariant: ['tabular-nums'],
+  },
+  metricValueLarge: { fontSize: 72 },
+  metricUnit: { fontSize: 16, color: colors.textMuted, fontWeight: '600' },
+  spacer: { flex: 1 },
+  toggle: {
+    height: 72,
+    borderRadius: radius.pill,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  toggleText: { color: '#fff', fontSize: 22, fontWeight: '800', letterSpacing: 2 },
+  secondary: {
+    height: 52,
+    borderRadius: radius.pill,
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: colors.surfaceRaised,
+  },
+  secondaryText: { color: colors.text, fontSize: 16, fontWeight: '600' },
+  pressed: { opacity: 0.75 },
+});

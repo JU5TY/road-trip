@@ -1,0 +1,79 @@
+# Road Trip
+
+Expo (SDK 58) app that records your drive in the background and stores every trip on the device (SQLite).
+
+## Layout
+
+```
+src/
+  app/                    Expo Router routes (thin wrappers around screens)
+    _layout.js            imports locationService first so the background task is defined at launch
+    index.js              → DashboardScreen
+    trips/index.js        → PastTripsScreen
+    trips/[id].js         → TripDetailScreen
+  screens/                Dashboard, Past Trips, Trip Detail
+  services/locationService.js   LOCATION_TRACKING_TASK, start/stop/resume
+  storage/tripStorage.js        expo-sqlite: trips + points tables
+  utils/geoMath.js              Haversine, moving time, rest stops, speed, elevation (pure functions)
+  utils/format.js               display formatting
+```
+
+## How the metrics work
+
+All data is stored in metric (metres, m/s). The Settings page switches the display between km and miles.
+
+- **Distance**: Haversine sum of consecutive fixes. Fixes with horizontal accuracy worse than 50 m, or jumps faster than 324 km/h, are dropped.
+- **Rest stops / auto-pause**: staying within 100 m of one spot for 5+ minutes. A crawling traffic jam keeps leaving that radius, so it counts as driving, not a stop. On iOS no fixes arrive while you're parked, so a long gap between fixes is judged by its average speed.
+- **Moving time** is the elapsed time minus rest stops, minus idle time before you first move or after your last movement.
+- **Average speed**: *while moving* = distance / moving time; *overall* = distance / total elapsed time, stops included.
+- **Top speed** is the highest speed held for at least 3 seconds, so a single GPS spike doesn't count.
+- **Elevation gain** uses a 5 m hysteresis. Note that Android GPS altitude is usually height above the WGS84 ellipsoid, not sea level, so max altitude can be off by tens of metres.
+- **Longest stint** is the most driving time between rest stops. The dashboard's *Since Break* tile shows the current one.
+- **Place names** for the start, end and rest stops come from the phone's reverse geocoder after a trip ends. Lookups that fail while offline are retried when you open the trip.
+
+## Running on your phone
+
+### Option A: Expo Go (quick UI check, foreground only)
+
+```bash
+npm install
+npx expo start --go --tunnel
+```
+
+`--go` is needed because `expo-dev-client` is installed; without it the QR code targets the development build. In Expo Go, tap **Enter URL manually** and type the `Metro: exp://…` address from the terminal with `exp` changed to `exps`. Plain `exp://` (http) was blocked on our home network, but `exps://` (https) works. Expo Go **can't** run background location. The app detects this and records only while it's open, and shows a warning on the dashboard.
+
+### Option B: Development build (needed for real background tracking)
+
+Using EAS in the cloud (no Xcode or Android Studio needed):
+
+```bash
+npx eas-cli@latest login
+npx eas-cli@latest build:configure
+npx eas-cli@latest build --profile development --platform android   # or ios
+```
+
+Install the build on your phone from the link EAS gives you, then run `npx expo start` and open the project from the dev build.
+
+Or build locally with the phone plugged in:
+
+```bash
+npx expo run:android --device
+npx expo run:ios --device       # needs Xcode + a signing team
+```
+
+For iOS dev builds on your own device, turn on **Developer Mode** (Settings → Privacy & Security). An Apple Developer account is required for EAS iOS builds.
+
+### Permissions on the phone
+
+- **iOS**: allow location, then pick **Always** when iOS asks later. A blue location pill shows while recording.
+- **Android**: allow location, then pick **Allow all the time** on the settings screen that opens. A notification stays up while recording. Turn off battery optimisation for the app (Settings → Apps → Road Trip → Battery → Unrestricted) so the OS doesn't kill it on long drives.
+
+### Google Maps key (Android builds only)
+
+On Android, `react-native-maps` uses Google Maps. Expo Go includes its own key. For dev and production builds, create a Maps SDK for Android key and put it in `.env`:
+
+```
+GOOGLE_MAPS_API_KEY=your-key
+```
+
+`app.config.js` reads this key at build time. iOS uses Apple Maps, so it needs no key.

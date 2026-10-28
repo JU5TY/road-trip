@@ -20,14 +20,15 @@ function regionFor(coordinates) {
 }
 
 /**
- * Non-interactive map thumbnail of a route, for cards and lists.
- * On Android it uses Google Maps lite mode (a static image), which is much
- * cheaper when several previews are on screen. Taps pass through to the parent.
+ * Non-interactive map thumbnail of a route, for cards. On Android it uses Google
+ * Maps lite mode (a static image), which is cheaper when several previews are on
+ * screen; iOS has no lite mode. Taps pass through to the parent. Pass `active={false}` to swap the map for a placeholder (e.g. when its
+ * screen is in the background) so no native map is kept alive off-screen.
  * segments: [{ key, coordinates, color }]
  */
-export default function RoutePreview({ segments, height = 160 }) {
+export default function RoutePreview({ segments, height = 160, active = true }) {
   const all = segments.flatMap((s) => s.coordinates);
-  if (all.length === 0) return <View style={[styles.placeholder, { height }]} />;
+  if (!active || all.length === 0) return <View style={[styles.placeholder, { height }]} />;
 
   return (
     <View style={{ height }} pointerEvents="none">

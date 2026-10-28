@@ -1,4 +1,4 @@
-import { Link, router, useFocusEffect } from 'expo-router';
+import { Link, router, useFocusEffect, useIsFocused } from 'expo-router';
 import { useCallback, useState } from 'react';
 import { ActivityIndicator, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 
@@ -80,6 +80,8 @@ function ContinueButton({ trip, now }) {
 
 export default function HomeScreen() {
   const { units } = useSettings();
+  // Only keep map previews alive while Home is showing, to save memory.
+  const focused = useIsFocused();
   // Trips plus the time they were loaded, so "this year" and Continue are stable.
   const [data, setData] = useState(null); // { trips, now }
 
@@ -131,6 +133,7 @@ export default function HomeScreen() {
           trip={latest}
           units={units}
           mapHeight={200}
+          showMap={focused}
           footer={isContinuable(latest, now) ? <ContinueButton trip={latest} now={now} /> : null}
         />
       </View>
@@ -148,7 +151,7 @@ export default function HomeScreen() {
             </Link>
           </View>
           {recent.map((trip) => (
-            <TripCard key={trip.id} trip={trip} units={units} />
+            <TripCard key={trip.id} trip={trip} units={units} showMap={focused} />
           ))}
         </View>
       ) : null}

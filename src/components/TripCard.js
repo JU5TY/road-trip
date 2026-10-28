@@ -30,7 +30,7 @@ function Stat({ label, value }) {
  * Tapping anywhere opens the trip. `footer` renders below the map (e.g. a
  * Continue button).
  */
-export default function TripCard({ trip, units, mapHeight = 160, footer }) {
+export default function TripCard({ trip, units, mapHeight = 160, footer, showMap = true }) {
   const segments = useTripPreview(trip);
   const first = trip.drives[0];
   const last = trip.drives.at(-1);
@@ -57,7 +57,7 @@ export default function TripCard({ trip, units, mapHeight = 160, footer }) {
             <Stat label="Driving" value={formatDurationShort(summary.movingTimeMs)} />
             <Stat label="Climb" value={formatElevation(summary.elevationGainM, units)} />
           </View>
-          <RoutePreview segments={segments ?? []} height={mapHeight} />
+          <RoutePreview segments={segments ?? []} height={mapHeight} active={showMap} />
         </Pressable>
       </Link>
       {footer}

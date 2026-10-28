@@ -1,7 +1,6 @@
 import Ionicons from '@expo/vector-icons/Ionicons';
 import { Tabs } from 'expo-router';
 import { Pressable, StyleSheet, Text, View } from 'react-native';
-import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import RecordingBar from '../../components/RecordingBar';
 import { colors, spacing } from '../../theme';
@@ -14,25 +13,29 @@ const ICONS = {
   settings: ['settings-outline', 'settings'],
 };
 
-/** Tab bar with the "● Recording" strip above it on every tab except Record. */
-function TabBar({ state, descriptors, navigation }) {
-  const insets = useSafeAreaInsets();
+/**
+ * Tab bar with the "● Recording" strip above it on every tab except Record.
+ * Expo Router passes { state, descriptors, emitter, navigateToTab, insets }
+ * (not a `navigation` object); this mirrors its built-in tab bar.
+ */
+function TabBar({ state, descriptors, emitter, navigateToTab, insets }) {
   const current = state.routes[state.index].name;
+  const recordKey = state.routes.find((r) => r.name === 'record')?.key;
 
   return (
     <View style={[styles.wrap, { paddingBottom: insets.bottom }]}>
       {current !== 'record' ? (
-        <RecordingBar onPress={() => navigation.navigate('record')} />
+        <RecordingBar onPress={() => recordKey && navigateToTab(recordKey)} />
       ) : null}
-      <View style={styles.row}>
+      <View style={styles.row} role="tablist">
         {state.routes.map((route, i) => {
           const focused = state.index === i;
           const { title } = descriptors[route.key].options;
           const [outline, filled] = ICONS[route.name] ?? ['ellipse-outline', 'ellipse'];
           const color = focused ? colors.accent : colors.textMuted;
           const onPress = () => {
-            const event = navigation.emit({ type: 'tabPress', target: route.key, canPreventDefault: true });
-            if (!focused && !event.defaultPrevented) navigation.navigate(route.name);
+            const event = emitter.emit({ type: 'tabPress', target: route.key, canPreventDefault: true });
+            if (!focused && !event.defaultPrevented) navigateToTab(route.key);
           };
           return (
             <Pressable

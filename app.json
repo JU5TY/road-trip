@@ -7,19 +7,13 @@
       "android"
     ],
     "scheme": "roadtrip",
-    "version": "1.0.0",
+    "version": "1.1.0",
     "orientation": "portrait",
     "icon": "./assets/icon.png",
     "userInterfaceStyle": "dark",
     "ios": {
       "supportsTablet": true,
-      "bundleIdentifier": "com.justinwoodford.roadtrip",
-      "infoPlist": {
-        "UIBackgroundModes": [
-          "location",
-          "location"
-        ]
-      }
+      "bundleIdentifier": "com.justinwoodford.roadtrip"
     },
     "android": {
       "package": "com.justinwoodford.roadtrip",
@@ -32,12 +26,10 @@
       "permissions": [
         "ACCESS_COARSE_LOCATION",
         "ACCESS_FINE_LOCATION",
-        "ACCESS_BACKGROUND_LOCATION",
         "FOREGROUND_SERVICE",
         "FOREGROUND_SERVICE_LOCATION",
         "ACCESS_COARSE_LOCATION",
         "ACCESS_FINE_LOCATION",
-        "ACCESS_BACKGROUND_LOCATION",
         "FOREGROUND_SERVICE",
         "FOREGROUND_SERVICE_LOCATION",
         "android.permission.ACCESS_COARSE_LOCATION",
@@ -47,6 +39,9 @@
         "android.permission.FOREGROUND_SERVICE",
         "android.permission.FOREGROUND_SERVICE_LOCATION",
         "android.permission.POST_NOTIFICATIONS"
+      ],
+      "blockedPermissions": [
+        "android.permission.ACCESS_BACKGROUND_LOCATION"
       ]
     },
     "web": {
@@ -58,11 +53,11 @@
       [
         "expo-location",
         {
-          "locationAlwaysAndWhenInUsePermission": "Road Trip records your route in the background while you drive, even when you're using Google Maps.",
           "locationWhenInUsePermission": "Road Trip uses your location to record your route.",
           "isIosBackgroundLocationEnabled": true,
-          "isAndroidBackgroundLocationEnabled": true,
-          "isAndroidForegroundServiceEnabled": true
+          "isAndroidBackgroundLocationEnabled": false,
+          "isAndroidForegroundServiceEnabled": true,
+          "locationAlwaysAndWhenInUsePermission": "Road Trip records your route while you drive, including while you're using Google Maps."
         }
       ]
     ],

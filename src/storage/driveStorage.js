@@ -104,6 +104,26 @@ export async function getDrivePoints(driveId) {
   );
 }
 
+/**
+ * Roughly `maxPoints` evenly spaced points of a drive (always including the
+ * last), thinned in SQL so long drives stay cheap to preview.
+ */
+export async function getDriveRoutePreview(driveId, maxPoints = 150) {
+  const db = await getDb();
+  return db.getAllAsync(
+    `SELECT latitude, longitude FROM (
+       SELECT latitude, longitude,
+              ROW_NUMBER() OVER (ORDER BY timestamp) AS rn,
+              COUNT(*) OVER () AS total
+       FROM points WHERE drive_id = ?
+     )
+     WHERE (rn - 1) % MAX(1, total / ?) = 0 OR rn = total
+     ORDER BY rn`,
+    driveId,
+    maxPoints
+  );
+}
+
 /** First and last recorded point of a drive, or null if it has none. */
 export async function getDriveEndpoints(driveId) {
   const db = await getDb();

@@ -1,5 +1,5 @@
-import { Link, useFocusEffect } from 'expo-router';
-import { useCallback, useEffect, useState } from 'react';
+import { router, useFocusEffect, useLocalSearchParams } from 'expo-router';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import { ActivityIndicator, Alert, Linking, Pressable, StyleSheet, Text, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
@@ -7,9 +7,9 @@ import ActionSheet from '../components/ActionSheet';
 import PermissionSheet from '../components/PermissionSheet';
 import { useSettings } from '../context/SettingsContext';
 import {
+  canTrackInBackground,
   getLocationAccess,
   requestLocationAccess,
-  resumeActiveDrive,
   startDrive,
   stopDrive,
 } from '../services/locationService';
@@ -25,12 +25,10 @@ import {
   toSpeed,
 } from '../utils/format';
 import { liveMetrics } from '../utils/geoMath';
-import { dayNumberFor, tripTitle } from '../utils/tripSummary';
+import { CONTINUE_WINDOW_MS, dayNumberFor, tripTitle } from '../utils/tripSummary';
 
 const GOOGLE_MAPS_NAV_URL = 'https://www.google.com/maps/dir/?api=1&travelmode=driving';
 const REFRESH_MS = 1000;
-// Offer "Continue" when the last drive ended within this long.
-const CONTINUE_WINDOW_MS = 3 * 24 * 60 * 60 * 1000;
 
 function Metric({ label, value, unit, large }) {
   return (
@@ -44,7 +42,8 @@ function Metric({ label, value, unit, large }) {
   );
 }
 
-export default function DashboardScreen() {
+export default function RecordScreen() {
+  const { continueTripId } = useLocalSearchParams();
   const { units } = useSettings();
   const [drive, setDrive] = useState(null); // the active drive, if recording
   // { driveId, text }, e.g. "Scotland 2026 · Day 2" for the active drive.
@@ -55,11 +54,12 @@ export default function DashboardScreen() {
   const [sheet, setSheet] = useState(null); // PermissionSheet kind, or null
   const [continueOffer, setContinueOffer] = useState(null); // { trip, dayNumber }
 
-  // Restart tracking if the app was killed mid-drive.
+  // Trip chosen before the permission check (e.g. "Continue" on Home); undefined = ask.
+  const chosenTripRef = useRef(undefined);
+
+  // Expo Go can only record while the app is open; warn while recording there.
   useEffect(() => {
-    resumeActiveDrive()
-      .then((res) => res && setForegroundOnly(!res.background))
-      .catch((err) => console.warn('[dashboard] resume failed', err));
+    canTrackInBackground().then((ok) => setForegroundOnly(!ok));
   }, []);
 
   // The background task writes to SQLite; poll it once a second while visible.
@@ -95,7 +95,7 @@ export default function DashboardScreen() {
         const day = dayNumberFor(trip.drives, activeStartedAt);
         setTripLabelFor({ driveId: activeId, text: `${tripTitle(trip) ?? 'New trip'} · Day ${day}` });
       })
-      .catch((err) => console.warn('[dashboard] trip label failed', err));
+      .catch((err) => console.warn('[record] trip label failed', err));
     return () => {
       cancelled = true;
     };
@@ -116,7 +116,6 @@ export default function DashboardScreen() {
     run(async () => {
       const res = await startDrive({ tripId });
       setDrive(res.drive);
-      setForegroundOnly(!res.background);
     });
 
   /** Offer to continue a recent trip, otherwise start a new one. */
@@ -126,20 +125,43 @@ export default function DashboardScreen() {
     setContinueOffer({ trip: recent, dayNumber: dayNumberFor(recent.drives, Date.now()) });
   };
 
-  const onToggle = async () => {
-    if (drive) {
-      return run(async () => {
-        await stopDrive();
-        setDrive(null);
-        setForegroundOnly(false);
-      });
-    }
+  /** After location access is sorted: use the trip chosen up front, or ask. */
+  const proceed = () => {
+    const tripId = chosenTripRef.current;
+    chosenTripRef.current = undefined;
+    return tripId === undefined ? chooseTripAndStart() : beginDrive(tripId);
+  };
+
+  /** Start recording, into `tripId` if given, otherwise offering Continue / New. */
+  const startRecording = async (tripId) => {
+    chosenTripRef.current = tripId;
     // Explain before (or instead of) the system prompt; start straight away once allowed.
     const access = await getLocationAccess();
     if (!access.granted) return setSheet(access.canAskAgain ? 'ask' : 'blocked');
     if (!access.precise) return setSheet('approximate');
-    return chooseTripAndStart();
+    return proceed();
   };
+
+  const onToggle = () => {
+    if (!drive) return startRecording(undefined);
+    return run(async () => {
+      await stopDrive();
+      setDrive(null);
+    });
+  };
+
+  // "Continue trip" on Home lands here with the trip to continue.
+  useEffect(() => {
+    if (!continueTripId) return;
+    router.setParams({ continueTripId: undefined });
+    getActiveDrive()
+      .then((active) => {
+        if (!active) startRecording(Number(continueTripId));
+      })
+      .catch((err) => console.warn('[record] continue failed', err));
+    // startRecording is recreated each render; only the param matters here.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [continueTripId]);
 
   const onSheetPrimary = async () => {
     const kind = sheet;
@@ -155,13 +177,14 @@ export default function DashboardScreen() {
       return;
     }
     if (!access.precise) return setSheet('approximate');
-    return chooseTripAndStart();
+    return proceed();
   };
 
   const onSheetSecondary = () => {
     const kind = sheet;
     setSheet(null);
-    if (kind === 'approximate') chooseTripAndStart();
+    if (kind === 'approximate') proceed();
+    else chosenTripRef.current = undefined;
   };
 
   const startFromOffer = (tripId) => {
@@ -274,11 +297,6 @@ export default function DashboardScreen() {
       >
         <Text style={styles.secondaryText}>Open Google Maps Navigation</Text>
       </Pressable>
-      <Link href="/trips" asChild>
-        <Pressable style={({ pressed }) => [styles.secondary, pressed && styles.pressed]}>
-          <Text style={styles.secondaryText}>Past Trips</Text>
-        </Pressable>
-      </Link>
     </SafeAreaView>
   );
 }

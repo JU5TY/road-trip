@@ -80,3 +80,29 @@ export function tripRouteLabel(trip) {
 export function tripTitle(trip) {
   return trip.name || tripRouteLabel(trip);
 }
+
+/** Offer "Continue" on a trip whose latest drive ended within this long. */
+export const CONTINUE_WINDOW_MS = 3 * 24 * 60 * 60 * 1000;
+
+/** Whether a new drive started at `now` would be offered as a continuation of `trip`. */
+export const isContinuable = (trip, now = Date.now()) =>
+  now - trip.drives.at(-1).endedAt <= CONTINUE_WINDOW_MS;
+
+/**
+ * Lifetime-style totals over all drives that started at or after `sinceTs`:
+ * { distanceM, movingTimeMs, tripCount, drivingDays, maxAltitudeM }.
+ */
+export function computeTotals(trips, sinceTs = 0) {
+  const inRange = trips
+    .map((t) => t.drives.filter((d) => d.startedAt >= sinceTs))
+    .filter((drives) => drives.length > 0);
+  const drives = inRange.flat();
+  const summary = summarizeDrives(drives);
+  return {
+    distanceM: summary.distanceM,
+    movingTimeMs: summary.movingTimeMs,
+    tripCount: inRange.length,
+    drivingDays: new Set(drives.map((d) => localDateKey(d.startedAt))).size,
+    maxAltitudeM: summary.maxAltitudeM,
+  };
+}

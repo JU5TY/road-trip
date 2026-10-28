@@ -83,7 +83,8 @@ let foregroundSubscription = null;
 
 const IS_EXPO_GO = Constants.executionEnvironment === ExecutionEnvironment.StoreClient;
 
-async function canUseBackgroundTask() {
+/** False in Expo Go (and wherever TaskManager is unavailable): tracking is foreground-only. */
+export async function canTrackInBackground() {
   if (IS_EXPO_GO) return false;
   try {
     return await TaskManager.isAvailableAsync();
@@ -112,7 +113,7 @@ async function startUpdates() {
   if (!(await getLocationAccess()).granted) {
     throw new Error('Location access is needed to record a trip.');
   }
-  if (await canUseBackgroundTask()) {
+  if (await canTrackInBackground()) {
     if (!(await Location.hasStartedLocationUpdatesAsync(LOCATION_TRACKING_TASK))) {
       await Location.startLocationUpdatesAsync(LOCATION_TRACKING_TASK, TRACKING_OPTIONS);
     }
@@ -135,7 +136,7 @@ async function stopUpdates() {
   foregroundSubscription?.remove();
   foregroundSubscription = null;
   if (
-    (await canUseBackgroundTask()) &&
+    (await canTrackInBackground()) &&
     (await Location.hasStartedLocationUpdatesAsync(LOCATION_TRACKING_TASK))
   ) {
     await Location.stopLocationUpdatesAsync(LOCATION_TRACKING_TASK);

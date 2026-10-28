@@ -7,14 +7,18 @@ Expo (SDK 58) app that records your drive in the background and stores every tri
 ```
 src/
   app/                    Expo Router routes (thin wrappers around screens)
-    _layout.js            imports locationService first so the background task is defined at launch
-    index.js              → DashboardScreen
-    trips/index.js        → PastTripsScreen
+    _layout.js            root stack; imports locationService first so the background task is
+                          defined at launch, and resumes an interrupted drive
+    (tabs)/_layout.js     bottom tabs + "● Recording" strip above the tab bar
+    (tabs)/index.js       → HomeScreen (latest trip, totals, recent trips with map previews)
+    (tabs)/record.js      → RecordScreen (START/STOP, live metrics, Google Maps button)
+    (tabs)/trips.js       → PastTripsScreen
+    (tabs)/settings.js    → SettingsScreen
     trips/[id].js         → TripScreen (a single-drive trip shows the drive inline)
     drives/[id].js        → DriveScreen
-    settings.js           → SettingsScreen
-  screens/                Dashboard, Past Trips, Trip, Drive, Settings
-  components/             RouteMap, TelemetryCard, RestStopsCard, DriveBody, sheets
+  screens/                Home, Record, Past Trips, Trip, Drive, Settings
+  components/             RouteMap, RoutePreview, TripCard, TelemetryCard, RestStopsCard, sheets
+  hooks/                  useActiveDrive, useTripPreview
   services/locationService.js   LOCATION_TRACKING_TASK, start/stop/resume a drive
   services/placeService.js      reverse-geocoded place names per drive
   storage/db.js                 SQLite connection + schema migrations
@@ -43,7 +47,7 @@ All data is stored in metric (metres, m/s). The Settings page switches the displ
 - **Average speed**: *while moving* = distance / moving time; *overall* = distance / total elapsed time, stops included.
 - **Top speed** is the highest speed held for at least 3 seconds, so a single GPS spike doesn't count.
 - **Elevation gain** uses a 5 m hysteresis. Note that Android GPS altitude is usually height above the WGS84 ellipsoid, not sea level, so max altitude can be off by tens of metres.
-- **Longest stint** is the most driving time between rest stops. The dashboard's *Since Break* tile shows the current one.
+- **Longest stint** is the most driving time between rest stops. The Record tab's *Since Break* tile shows the current one.
 - **Place names** for the start, end and rest stops come from the phone's reverse geocoder after a trip ends. Lookups that fail while offline are retried when you open the trip.
 
 ## Running on your phone

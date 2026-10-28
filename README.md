@@ -17,7 +17,8 @@ src/
     trips/[id].js         → TripScreen (a single-drive trip shows the drive inline)
     drives/[id].js        → DriveScreen
   screens/                Home, Record, Past Trips, Trip, Drive, Settings
-  components/             RouteMap, RoutePreview, TripCard, TelemetryCard, RestStopsCard, sheets
+  components/             RouteMap, RoutePreview, TripCard, TelemetryCard, TimelineCard, sheets
+  components/charts/      LineChart (drag to inspect), SpeedBandsBar, DayDistanceBars, ChartsCard
   hooks/                  useActiveDrive, useTripPreview
   services/locationService.js   LOCATION_TRACKING_TASK, start/stop/resume a drive
   services/placeService.js      reverse-geocoded place names per drive
@@ -26,6 +27,8 @@ src/
   storage/driveStorage.js       drives (one START→STOP recording) and their GPS points
   utils/geoMath.js              per-drive metrics engine (pure functions)
   utils/tripSummary.js          combining drives into trips and days (pure functions)
+  utils/timeline.js             stop-by-stop timelines for drives and trips (pure functions)
+  utils/chartData.js            elevation/speed series and speed bands from GPS points (pure functions)
   utils/format.js               display formatting
 ```
 

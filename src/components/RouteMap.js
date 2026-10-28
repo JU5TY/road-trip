@@ -11,9 +11,11 @@ const FOCUS_DELTA = 0.01; // ~1 km across when zooming to a single marker
  * Map of one or more route segments.
  * segments: [{ key, coordinates: [{latitude, longitude}], color }]
  * markers:  [{ key, coordinate, title, description?, color }]
+ * highlight: optional { latitude, longitude } shown as a dot (e.g. while
+ *            dragging across a chart).
  * `ref` exposes focusMarker(key): zoom to that marker and open its callout.
  */
-export default function RouteMap({ segments, markers = [], height = 320, ref }) {
+export default function RouteMap({ segments, markers = [], height = 320, highlight, ref }) {
   const mapRef = useRef(null);
   const markerRefs = useRef(new Map());
   const all = segments.flatMap((s) => s.coordinates);
@@ -66,6 +68,15 @@ export default function RouteMap({ segments, markers = [], height = 320, ref }) 
               pinColor={m.color}
             />
           ))}
+          {highlight ? (
+            <Marker
+              key="highlight"
+              coordinate={{ latitude: highlight.latitude, longitude: highlight.longitude }}
+              anchor={{ x: 0.5, y: 0.5 }}
+            >
+              <View style={styles.highlight} />
+            </Marker>
+          ) : null}
         </MapView>
       ) : (
         <View style={styles.empty}>
@@ -80,4 +91,12 @@ const styles = StyleSheet.create({
   wrap: { borderRadius: radius.lg, overflow: 'hidden', backgroundColor: colors.surface },
   empty: { flex: 1, alignItems: 'center', justifyContent: 'center', padding: spacing.md },
   emptyText: { color: colors.textMuted, fontSize: 13 },
+  highlight: {
+    width: 16,
+    height: 16,
+    borderRadius: 8,
+    backgroundColor: colors.link,
+    borderWidth: 3,
+    borderColor: '#fff',
+  },
 });

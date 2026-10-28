@@ -9,6 +9,7 @@ import MoveDriveSheet from '../components/MoveDriveSheet';
 import RouteMap from '../components/RouteMap';
 import TelemetryCard, { cardStyle } from '../components/TelemetryCard';
 import TimelineCard from '../components/TimelineCard';
+import { TripCharts } from '../components/charts/ChartsCard';
 import { useSettings } from '../context/SettingsContext';
 import { ensureDrivePlaces } from '../services/placeService';
 import { getDrivePoints } from '../storage/driveStorage';
@@ -101,6 +102,7 @@ export default function TripScreen() {
   const [menu, setMenu] = useState(null); // null | 'options' | 'edit' | 'move'
   const scrollRef = useRef(null);
   const mapRef = useRef(null);
+  const [highlight, setHighlight] = useState(null); // point under the finger on a chart
 
   const setDrivePlaces = (driveId, places) =>
     setTrip((prev) => ({
@@ -271,6 +273,7 @@ export default function TripScreen() {
         <>
           <RouteMap
             ref={mapRef}
+            highlight={highlight}
             segments={segments}
             markers={[
               ...(firstPoint
@@ -281,6 +284,12 @@ export default function TripScreen() {
                 : []),
               ...trip.drives.flatMap(stopMarkers),
             ]}
+          />
+          <TripCharts
+            days={days}
+            pointsByDrive={pointsByDrive}
+            units={units}
+            onScrub={setHighlight}
           />
           <TelemetryCard
             title="Trip Totals"

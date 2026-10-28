@@ -1,10 +1,11 @@
-import { useMemo, useRef } from 'react';
+import { useMemo, useRef, useState } from 'react';
 
 import { colors } from '../theme';
 import { formatDurationShort } from '../utils/format';
 import { downsample } from '../utils/geoMath';
 import { buildDriveTimeline } from '../utils/timeline';
 import { driveElapsedMs } from '../utils/tripSummary';
+import { DriveCharts } from './charts/ChartsCard';
 import RouteMap from './RouteMap';
 import TelemetryCard from './TelemetryCard';
 import TimelineCard from './TimelineCard';
@@ -27,12 +28,13 @@ export function stopMarkers(drive) {
 }
 
 /**
- * Map, telemetry and stop-by-stop timeline for one drive. Used by the Drive
+ * Map, charts, telemetry and stop-by-stop timeline for one drive. Used by the Drive
  * screen and single-drive trips. `onShowMap` should scroll the map into view;
  * it is called before zooming to a tapped stop.
  */
 export default function DriveBody({ drive, points, units, onShowMap }) {
   const mapRef = useRef(null);
+  const [highlight, setHighlight] = useState(null); // point under the finger on a chart
   const route = useMemo(
     () => downsample(points).map(({ latitude, longitude }) => ({ latitude, longitude })),
     [points]
@@ -64,7 +66,9 @@ export default function DriveBody({ drive, points, units, onShowMap }) {
         ref={mapRef}
         segments={[{ key: 'route', coordinates: route, color: colors.accent }]}
         markers={markers}
+        highlight={highlight}
       />
+      <DriveCharts points={points} units={units} onScrub={setHighlight} />
       <TelemetryCard stats={drive.stats} elapsedMs={driveElapsedMs(drive)} units={units} />
       <TimelineCard items={timeline} units={units} onStopPress={showStop} />
     </>

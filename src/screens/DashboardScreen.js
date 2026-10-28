@@ -3,8 +3,15 @@ import { useCallback, useEffect, useState } from 'react';
 import { ActivityIndicator, Alert, Linking, Pressable, StyleSheet, Text, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
+import PermissionSheet from '../components/PermissionSheet';
 import { useSettings } from '../context/SettingsContext';
-import { resumeActiveTrip, startTrip, stopTrip } from '../services/locationService';
+import {
+  getLocationAccess,
+  requestLocationAccess,
+  resumeActiveTrip,
+  startTrip,
+  stopTrip,
+} from '../services/locationService';
 import { getActiveTrip } from '../storage/tripStorage';
 import { colors, radius, spacing } from '../theme';
 import {
@@ -38,6 +45,7 @@ export default function DashboardScreen() {
   const [now, setNow] = useState(Date.now());
   const [busy, setBusy] = useState(false);
   const [foregroundOnly, setForegroundOnly] = useState(false);
+  const [sheet, setSheet] = useState(null); // PermissionSheet kind, or null
 
   // Restart tracking if the app was killed mid-trip.
   useEffect(() => {
@@ -66,23 +74,60 @@ export default function DashboardScreen() {
     }, [])
   );
 
-  const onToggle = async () => {
+  const run = async (action) => {
     setBusy(true);
     try {
-      if (trip) {
-        await stopTrip();
-        setTrip(null);
-        setForegroundOnly(false);
-      } else {
-        const res = await startTrip();
-        setTrip(res.trip);
-        setForegroundOnly(!res.background);
-      }
+      await action();
     } catch (err) {
-      Alert.alert('Location', err.message);
+      Alert.alert('Road Trip', err.message);
     } finally {
       setBusy(false);
     }
+  };
+
+  const beginTrip = () =>
+    run(async () => {
+      const res = await startTrip();
+      setTrip(res.trip);
+      setForegroundOnly(!res.background);
+    });
+
+  const onToggle = async () => {
+    if (trip) {
+      return run(async () => {
+        await stopTrip();
+        setTrip(null);
+        setForegroundOnly(false);
+      });
+    }
+    // Explain before (or instead of) the system prompt; start straight away once allowed.
+    const access = await getLocationAccess();
+    if (!access.granted) return setSheet(access.canAskAgain ? 'ask' : 'blocked');
+    if (!access.precise) return setSheet('approximate');
+    return beginTrip();
+  };
+
+  const onSheetPrimary = async () => {
+    const kind = sheet;
+    setSheet(null);
+    if (kind !== 'ask') {
+      Linking.openSettings();
+      return;
+    }
+    const access = await requestLocationAccess();
+    if (!access.granted) {
+      // A first "Don't allow" just closes; after that only Settings can help.
+      if (!access.canAskAgain) setSheet('blocked');
+      return;
+    }
+    if (!access.precise) return setSheet('approximate');
+    return beginTrip();
+  };
+
+  const onSheetSecondary = () => {
+    const kind = sheet;
+    setSheet(null);
+    if (kind === 'approximate') beginTrip();
   };
 
   const openGoogleMaps = () =>
@@ -95,6 +140,7 @@ export default function DashboardScreen() {
 
   return (
     <SafeAreaView style={styles.screen} edges={['bottom']}>
+      <PermissionSheet kind={sheet} onPrimary={onSheetPrimary} onSecondary={onSheetSecondary} />
       <View style={styles.status}>
         <View style={[styles.dot, { backgroundColor: active ? colors.start : colors.textMuted }]} />
         <Text style={styles.statusText}>

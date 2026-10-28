@@ -4,6 +4,7 @@
 import Constants, { ExecutionEnvironment } from 'expo-constants';
 import * as Location from 'expo-location';
 import * as TaskManager from 'expo-task-manager';
+import { Platform } from 'react-native';
 
 import {
   appendFixes,
@@ -19,13 +20,19 @@ export const LOCATION_TRACKING_TASK = 'LOCATION_TRACKING_TASK';
 
 const TRACKING_OPTIONS = {
   accuracy: Location.Accuracy.BestForNavigation,
-  distanceInterval: 5, // meters
+  distanceInterval: 10, // meters
   timeInterval: 2000, // ms, Android only
+  // While in the background, deliver fixes in batches instead of waking the
+  // app for every one. The metrics engine already handles batches.
+  deferredUpdatesInterval: 15000,
   // iOS: keep delivering updates while Google Maps (or anything else) is in front.
   activityType: Location.ActivityType.AutomotiveNavigation,
   pausesUpdatesAutomatically: false,
   showsBackgroundLocationIndicator: true,
   // Android: a foreground service keeps the process alive while minimised.
+  // Because tracking starts while the app is open, this (and iOS's background
+  // indicator) works with "While using the app" permission alone; "Allow all
+  // the time" is never needed.
   foregroundService: {
     notificationTitle: 'Road trip in progress',
     notificationBody: 'Recording your route in the background.',
@@ -79,29 +86,32 @@ async function canUseBackgroundTask() {
   }
 }
 
-async function requestPermissions(needBackground) {
-  const fg = await Location.requestForegroundPermissionsAsync();
-  if (fg.status !== 'granted') {
-    throw new Error('Location permission is required to record a trip.');
-  }
-  if (!needBackground) return;
-  const bg = await Location.requestBackgroundPermissionsAsync();
-  if (bg.status !== 'granted') {
-    throw new Error(
-      'Background location ("Allow all the time" / "Always") is required to keep recording while the app is minimised.'
-    );
-  }
+function toAccess(res) {
+  const precise =
+    Platform.OS === 'android' ? res.android?.accuracy === 'fine' : res.ios?.accuracy !== 'reduced';
+  return { granted: res.status === 'granted', canAskAgain: res.canAskAgain, precise };
+}
+
+/** Current location permission: { granted, canAskAgain, precise }. Never prompts. */
+export async function getLocationAccess() {
+  return toAccess(await Location.getForegroundPermissionsAsync());
+}
+
+/** Show the system location prompt. Resolves to the same shape as getLocationAccess. */
+export async function requestLocationAccess() {
+  return toAccess(await Location.requestForegroundPermissionsAsync());
 }
 
 async function startUpdates() {
+  if (!(await getLocationAccess()).granted) {
+    throw new Error('Location access is needed to record a trip.');
+  }
   if (await canUseBackgroundTask()) {
-    await requestPermissions(true);
     if (!(await Location.hasStartedLocationUpdatesAsync(LOCATION_TRACKING_TASK))) {
       await Location.startLocationUpdatesAsync(LOCATION_TRACKING_TASK, TRACKING_OPTIONS);
     }
     return { background: true };
   }
-  await requestPermissions(false);
   if (!foregroundSubscription) {
     foregroundSubscription = await Location.watchPositionAsync(
       {
@@ -126,10 +136,13 @@ async function stopUpdates() {
   }
 }
 
-/** Start a new trip and begin recording. Returns { trip, background }. */
+/**
+ * Start a new trip and begin recording. Location permission must already be
+ * granted (see the dashboard's permission sheet). Returns { trip, background }.
+ */
 export async function startTrip() {
   const existing = await getActiveTrip();
-  // Ask for permissions before creating the trip so a denial leaves no empty trip behind.
+  // Start updates before creating the trip so a failure leaves no empty trip behind.
   const { background } = await startUpdates();
   const trip = existing ?? (await createTrip());
   return { trip, background };
@@ -158,6 +171,7 @@ export async function stopTrip() {
  */
 export async function resumeActiveTrip() {
   const trip = await getActiveTrip();
-  if (!trip) return null;
+  // Never prompt on launch; if access was revoked the dashboard still shows the trip.
+  if (!trip || !(await getLocationAccess()).granted) return null;
   return startUpdates();
 }

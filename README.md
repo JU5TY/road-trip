@@ -65,8 +65,11 @@ For iOS dev builds on your own device, turn on **Developer Mode** (Settings → 
 
 ### Permissions on the phone
 
-- **iOS**: allow location, then pick **Always** when iOS asks later. A blue location pill shows while recording.
-- **Android**: allow location, then pick **Allow all the time** on the settings screen that opens. A notification stays up while recording. Turn off battery optimisation for the app (Settings → Apps → Road Trip → Battery → Unrestricted) so the OS doesn't kill it on long drives.
+Tapping **START TRIP** the first time shows a short explanation, then the system location prompt.
+
+- Choose **Precise** and **While using the app** (iOS: **Allow While Using App**). "Allow all the time" is **not** needed: tracking starts while the app is open and continues in the background through the Android foreground-service notification or the iOS blue location indicator.
+- If location is turned off or set to approximate, the app explains this and offers a shortcut to Settings.
+- On aggressive battery savers (some Samsung and Xiaomi phones), set Road Trip's battery use to **Unrestricted** if routes have gaps.
 
 ### Google Maps key (Android builds only)
 

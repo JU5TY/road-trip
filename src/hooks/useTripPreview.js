@@ -1,8 +1,9 @@
 import { useEffect, useState } from 'react';
 
 import { getDriveRoutePreview } from '../storage/driveStorage';
-import { colors, dayColor } from '../theme';
+import { dayColorFor } from '../theme';
 import { groupIntoDays } from '../utils/tripSummary';
+import { useTheme } from './useTheme';
 
 const POINTS_PER_PREVIEW = 300;
 
@@ -11,6 +12,7 @@ const POINTS_PER_PREVIEW = 300;
  * multi-day trips, the accent colour otherwise. Null while loading.
  */
 export function useTripPreview(trip) {
+  const { c } = useTheme();
   const [result, setResult] = useState(null); // { key, segments }
   const driveKey = trip ? trip.drives.map((d) => d.id).join(',') : '';
 
@@ -24,7 +26,7 @@ export function useTripPreview(trip) {
       days.flatMap((day) =>
         day.drives.map(async (d) => ({
           key: `drive-${d.id}`,
-          color: multiDay ? dayColor(day.number) : colors.accent,
+          color: multiDay ? dayColorFor(c, day.number) : c.accent,
           coordinates: await getDriveRoutePreview(d.id, perDrive),
         }))
       )
@@ -34,9 +36,9 @@ export function useTripPreview(trip) {
     return () => {
       cancelled = true;
     };
-    // Re-run only when the set of drives changes, not on every new trip object.
+    // Re-run only when the set of drives (or the theme) changes, not on every new trip object.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [driveKey]);
+  }, [driveKey, c]);
 
   // Ignore a result that belongs to a previous trip.
   return result && result.key === driveKey ? result.segments : null;

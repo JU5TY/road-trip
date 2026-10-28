@@ -1,20 +1,26 @@
-import { Modal, Pressable, ScrollView, StyleSheet, Text } from 'react-native';
+import { Modal, Pressable, ScrollView, Text, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
-import { colors, radius, spacing } from '../theme';
+import { useStyles, useTheme } from '../hooks/useTheme';
+import { radius, spacing, type } from '../theme';
+import Icon from './ui/Icon';
 
 /**
  * Bottom sheet with a list of actions (Android's Alert only allows three buttons).
- * actions: [{ label, key?, detail?, onPress, style?: 'primary' | 'destructive' }]
+ * actions: [{ label, key?, detail?, icon?, selected?, onPress, style?: 'primary' | 'destructive' }]
+ * `selected` shows a tick (for picking one option, e.g. the break reminder).
  * Pass `visible={false}` to hide. Tapping the backdrop or Cancel calls onClose.
  */
 export default function ActionSheet({ visible, title, message, actions, onClose }) {
   const insets = useSafeAreaInsets();
+  const { c } = useTheme();
+  const styles = useStyles(makeStyles);
   return (
     <Modal visible={visible} transparent animationType="slide" onRequestClose={onClose}>
       <Pressable style={styles.backdrop} onPress={onClose}>
         {/* Swallow taps on the sheet itself so only the backdrop closes it. */}
-        <Pressable style={[styles.sheet, { paddingBottom: spacing.lg + insets.bottom }]}>
+        <Pressable style={[styles.sheet, { paddingBottom: spacing.md + insets.bottom }]}>
+          <View style={styles.handle} />
           {title ? <Text style={styles.title}>{title}</Text> : null}
           {message ? <Text style={styles.message}>{message}</Text> : null}
           <ScrollView style={styles.list} contentContainerStyle={styles.listContent}>
@@ -28,25 +34,45 @@ export default function ActionSheet({ visible, title, message, actions, onClose 
                   pressed && styles.pressed,
                 ]}
                 accessibilityRole="button"
+                accessibilityState={a.selected !== undefined ? { selected: a.selected } : undefined}
               >
-                <Text
-                  style={[
-                    styles.actionLabel,
-                    a.style === 'primary' && styles.actionLabelPrimary,
-                    a.style === 'destructive' && styles.actionLabelDestructive,
-                  ]}
-                  numberOfLines={1}
-                >
-                  {a.label}
-                </Text>
-                {a.detail ? (
+                {a.icon ? (
+                  <Icon
+                    name={a.icon}
+                    size={22}
+                    color={
+                      a.style === 'primary'
+                        ? c.onAccentContainer
+                        : a.style === 'destructive'
+                          ? c.finish
+                          : c.accent
+                    }
+                  />
+                ) : null}
+                <View style={styles.actionText}>
                   <Text
-                    style={[styles.actionDetail, a.style === 'primary' && styles.actionLabelPrimary]}
+                    style={[
+                      styles.actionLabel,
+                      a.style === 'primary' && styles.actionLabelPrimary,
+                      a.style === 'destructive' && styles.actionLabelDestructive,
+                    ]}
                     numberOfLines={1}
                   >
-                    {a.detail}
+                    {a.label}
                   </Text>
-                ) : null}
+                  {a.detail ? (
+                    <Text
+                      style={[
+                        styles.actionDetail,
+                        a.style === 'primary' && styles.actionLabelPrimary,
+                      ]}
+                      numberOfLines={1}
+                    >
+                      {a.detail}
+                    </Text>
+                  ) : null}
+                </View>
+                {a.selected ? <Icon name="check" size={22} color={c.accent} /> : null}
               </Pressable>
             ))}
           </ScrollView>
@@ -59,34 +85,46 @@ export default function ActionSheet({ visible, title, message, actions, onClose 
   );
 }
 
-const styles = StyleSheet.create({
-  backdrop: { flex: 1, justifyContent: 'flex-end', backgroundColor: 'rgba(0,0,0,0.55)' },
+const makeStyles = (c) => ({
+  backdrop: { flex: 1, justifyContent: 'flex-end', backgroundColor: c.scrim },
   sheet: {
-    backgroundColor: colors.surface,
-    borderTopLeftRadius: radius.lg,
-    borderTopRightRadius: radius.lg,
-    padding: spacing.lg,
+    backgroundColor: c.background,
+    borderTopLeftRadius: radius.card,
+    borderTopRightRadius: radius.card,
+    paddingHorizontal: spacing.md,
+    paddingTop: spacing.sm,
     gap: spacing.sm,
     maxHeight: '80%',
   },
-  title: { color: colors.text, fontSize: 20, fontWeight: '700' },
-  message: { color: colors.textMuted, fontSize: 14, lineHeight: 20 },
+  handle: {
+    alignSelf: 'center',
+    width: 32,
+    height: 4,
+    borderRadius: 2,
+    backgroundColor: c.outlineStrong,
+    opacity: 0.4,
+    marginBottom: spacing.sm,
+  },
+  title: { ...type.title, color: c.text, marginHorizontal: spacing.xs },
+  message: { ...type.body, color: c.textMuted, marginHorizontal: spacing.xs },
   list: { flexGrow: 0 },
-  listContent: { gap: spacing.sm, paddingTop: spacing.xs },
+  listContent: { gap: spacing.xs, paddingTop: spacing.xs },
   action: {
-    minHeight: 52,
-    borderRadius: radius.md,
+    minHeight: 56,
+    borderRadius: 20,
     paddingHorizontal: spacing.md,
     paddingVertical: spacing.sm,
-    justifyContent: 'center',
-    backgroundColor: colors.surfaceRaised,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing.md,
   },
-  actionPrimary: { backgroundColor: colors.accent },
-  actionLabel: { color: colors.text, fontSize: 16, fontWeight: '600' },
-  actionLabelPrimary: { color: colors.background },
-  actionLabelDestructive: { color: colors.stop },
-  actionDetail: { color: colors.textMuted, fontSize: 13, marginTop: 2 },
-  cancel: { height: 44, alignItems: 'center', justifyContent: 'center' },
-  cancelText: { color: colors.textMuted, fontSize: 16, fontWeight: '600' },
-  pressed: { opacity: 0.75 },
+  actionText: { flex: 1, minWidth: 0 },
+  actionPrimary: { backgroundColor: c.accentContainer },
+  actionLabel: { ...type.bodyStrong, color: c.text },
+  actionLabelPrimary: { color: c.onAccentContainer },
+  actionLabelDestructive: { color: c.finish },
+  actionDetail: { ...type.small, color: c.textMuted, marginTop: 2 },
+  cancel: { height: 48, alignItems: 'center', justifyContent: 'center' },
+  cancelText: { ...type.button, color: c.accent },
+  pressed: { opacity: 0.7 },
 });

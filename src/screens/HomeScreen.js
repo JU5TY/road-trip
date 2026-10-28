@@ -1,86 +1,89 @@
-import { Link, router, useFocusEffect, useIsFocused } from 'expo-router';
+import { router, useFocusEffect, useIsFocused } from 'expo-router';
 import { useCallback, useState } from 'react';
-import { ActivityIndicator, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
+import { ActivityIndicator, ScrollView, Text, View } from 'react-native';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
+import MapIllustration from '../components/MapIllustration';
+import RecordingBar from '../components/RecordingBar';
 import TripCard from '../components/TripCard';
+import Button from '../components/ui/Button';
+import ListRow from '../components/ui/ListRow';
+import SectionHeader from '../components/ui/SectionHeader';
 import { useSettings } from '../context/SettingsContext';
+import { useActiveDrive } from '../hooks/useActiveDrive';
+import { useStyles, useTheme } from '../hooks/useTheme';
 import { listTrips } from '../storage/tripStorage';
-import { colors, radius, spacing } from '../theme';
-import { formatDistance, formatDurationShort, formatElevation } from '../utils/format';
-import { computeTotals, dayNumberFor, isContinuable } from '../utils/tripSummary';
+import { radius, spacing, type } from '../theme';
+import { distanceParts } from '../utils/format';
+import { computeTotals, dayNumberFor, isContinuable, tripTitle } from '../utils/tripSummary';
 
-const startOfYear = (now) => new Date(new Date(now).getFullYear(), 0, 1).getTime();
-
-function Totals({ trips, units, now }) {
-  const [range, setRange] = useState('year'); // 'year' | 'all'
-  const totals = computeTotals(trips, range === 'year' ? startOfYear(now) : 0);
-  const tiles = [
-    { label: 'Distance', value: formatDistance(totals.distanceM, units, 0) },
-    { label: 'Driving time', value: formatDurationShort(totals.movingTimeMs) },
-    {
-      label: 'Trips',
-      value: String(totals.tripCount),
-      detail: `${totals.drivingDays} ${totals.drivingDays === 1 ? 'day' : 'days'} on the road`,
-    },
-    { label: 'Highest point', value: formatElevation(totals.maxAltitudeM, units) },
-  ];
-
+/** Start a new trip, or carry on with a recent one ("Continue Scotland 2026 · Day 4"). */
+function StartButtons({ continueTrip, now }) {
+  const styles = useStyles(makeStyles);
   return (
-    <View style={styles.section}>
-      <View style={styles.sectionHeader}>
-        <Text style={styles.sectionTitle}>Your totals</Text>
-        <View style={styles.toggle}>
-          {[
-            ['year', String(new Date(now).getFullYear())],
-            ['all', 'All time'],
-          ].map(([value, label]) => (
-            <Pressable
-              key={value}
-              onPress={() => setRange(value)}
-              style={[styles.toggleItem, range === value && styles.toggleItemOn]}
-              accessibilityRole="button"
-              accessibilityState={{ selected: range === value }}
-            >
-              <Text style={[styles.toggleText, range === value && styles.toggleTextOn]}>{label}</Text>
-            </Pressable>
-          ))}
-        </View>
-      </View>
-      <View style={styles.tiles}>
-        {tiles.map((t) => (
-          <View key={t.label} style={styles.tile}>
-            <Text style={styles.tileLabel}>{t.label}</Text>
-            <Text style={styles.tileValue} numberOfLines={1} adjustsFontSizeToFit>
-              {t.value}
-            </Text>
-            {t.detail ? <Text style={styles.tileDetail}>{t.detail}</Text> : null}
-          </View>
-        ))}
-      </View>
+    <View style={styles.buttons}>
+      <Button
+        size="large"
+        icon="radio_button_checked"
+        iconFilled
+        label="Start a trip"
+        onPress={() => router.navigate({ pathname: '/record', params: { start: 'new' } })}
+      />
+      {continueTrip ? (
+        <Button
+          variant="tonal"
+          icon="play_arrow"
+          iconFilled
+          label={`Continue ${tripTitle(continueTrip) ?? 'last trip'}`}
+          trailing={`· Day ${dayNumberFor(continueTrip.drives, now)}`}
+          onPress={() =>
+            router.navigate({
+              pathname: '/record',
+              params: { continueTripId: String(continueTrip.id) },
+            })
+          }
+        />
+      ) : null}
     </View>
   );
 }
 
-function ContinueButton({ trip, now }) {
-  const day = dayNumberFor(trip.drives, now);
+/** Lifetime totals as Details-style rows (built for people who only drive a few trips a year). */
+function AllTime({ trips, units }) {
+  const styles = useStyles(makeStyles);
+  const totals = computeTotals(trips);
+  const distance = distanceParts(totals.distanceM, units);
+  const rows = [
+    ['route', 'Trips', String(totals.tripCount)],
+    ['distance', 'Distance', `${distance.value} ${distance.unit}`],
+    ['calendar_month', 'Days on the road', String(totals.drivingDays)],
+  ];
   return (
-    <Pressable
-      onPress={() =>
-        router.navigate({ pathname: '/record', params: { continueTripId: String(trip.id) } })
-      }
-      style={({ pressed }) => [styles.continue, pressed && styles.pressed]}
-      accessibilityRole="button"
-    >
-      <Text style={styles.continueText}>Continue trip · Day {day}</Text>
-    </Pressable>
+    <>
+      <SectionHeader title="All time" style={styles.allTimeHeader} />
+      {rows.map(([icon, title, value], i) => (
+        <ListRow
+          key={title}
+          icon={icon}
+          title={title}
+          value={value}
+          strongValue
+          divider={i < rows.length - 1}
+        />
+      ))}
+    </>
   );
 }
 
 export default function HomeScreen() {
   const { units } = useSettings();
-  // Only keep map previews alive while Home is showing, to save memory.
+  const { c } = useTheme();
+  const styles = useStyles(makeStyles);
+  const insets = useSafeAreaInsets();
+  const { drive: activeDrive } = useActiveDrive();
+  // Only keep the map preview alive while Home is showing, to save memory.
   const focused = useIsFocused();
-  // Trips plus the time they were loaded, so "this year" and Continue are stable.
+  // Trips plus the time they were loaded, so Continue and "Day N" are stable.
   const [data, setData] = useState(null); // { trips, now }
 
   useFocusEffect(
@@ -98,100 +101,74 @@ export default function HomeScreen() {
   if (!data) {
     return (
       <View style={[styles.screen, styles.center]}>
-        <ActivityIndicator color={colors.accent} />
+        <ActivityIndicator color={c.accent} />
       </View>
     );
   }
 
   const { trips, now } = data;
-  if (trips.length === 0) {
-    return (
-      <View style={[styles.screen, styles.center, styles.emptyWrap]}>
-        <Text style={styles.emptyTitle}>Record your first drive</Text>
-        <Text style={styles.emptyBody}>
-          Your route, distance, speeds and rest stops will appear here.
-        </Text>
-        <Link href="/record" asChild>
-          <Pressable style={({ pressed }) => [styles.continue, styles.emptyButton, pressed && styles.pressed]}>
-            <Text style={styles.continueText}>Go to Record</Text>
-          </Pressable>
-        </Link>
-      </View>
-    );
-  }
-
   const latest = trips[0];
 
   return (
-    <ScrollView style={styles.screen} contentContainerStyle={styles.content}>
-      <View style={styles.section}>
-        <View style={styles.sectionHeader}>
-          <Text style={styles.sectionTitle}>Latest trip</Text>
-          {trips.length > 1 ? (
-            <Link href="/trips" asChild>
-              <Pressable hitSlop={12}>
-                <Text style={styles.link}>See all {trips.length}</Text>
-              </Pressable>
-            </Link>
-          ) : null}
-        </View>
-        <TripCard
-          trip={latest}
-          units={units}
-          mapHeight={200}
-          showMap={focused}
-          footer={isContinuable(latest, now) ? <ContinueButton trip={latest} now={now} /> : null}
-        />
-      </View>
+    <ScrollView
+      style={styles.screen}
+      contentContainerStyle={[styles.content, { paddingTop: insets.top + spacing.md }]}
+    >
+      <Text style={[type.headline, styles.h1]} role="heading">
+        Road Trip
+      </Text>
 
-      <Totals trips={trips} units={units} now={now} />
+      {activeDrive ? (
+        <RecordingBar style={styles.recording} />
+      ) : (
+        <StartButtons
+          continueTrip={latest && isContinuable(latest, now) ? latest : null}
+          now={now}
+        />
+      )}
+
+      {latest ? (
+        <>
+          <SectionHeader
+            title="Latest trip"
+            actionLabel="All trips"
+            onAction={() => router.navigate('/trips')}
+            style={styles.latestHeader}
+          />
+          <TripCard trip={latest} units={units} variant="large" showMap={focused} />
+          <AllTime trips={trips} units={units} />
+        </>
+      ) : (
+        <>
+          <SectionHeader title="Latest trip" style={styles.latestHeader} />
+          <View style={styles.emptyCard}>
+            <MapIllustration height={140} />
+            <View style={styles.emptyText}>
+              <Text style={[type.bodyStrong, styles.emptyTitle]}>
+                Your first trip will show here
+              </Text>
+              <Text style={[type.body, styles.muted]}>
+                Tap Start a trip when you set off. It keeps recording with the screen off.
+              </Text>
+            </View>
+          </View>
+        </>
+      )}
     </ScrollView>
   );
 }
 
-const styles = StyleSheet.create({
-  screen: { flex: 1, backgroundColor: colors.background },
-  content: { padding: spacing.md, gap: spacing.lg, paddingBottom: spacing.xl },
+const makeStyles = (c) => ({
+  screen: { flex: 1, backgroundColor: c.background },
   center: { alignItems: 'center', justifyContent: 'center' },
-  section: { gap: spacing.sm },
-  sectionHeader: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' },
-  sectionTitle: { color: colors.text, fontSize: 20, fontWeight: '800' },
-  link: { color: colors.accent, fontSize: 15, fontWeight: '600' },
-  toggle: {
-    flexDirection: 'row',
-    backgroundColor: colors.surface,
-    borderRadius: radius.pill,
-    padding: 3,
-  },
-  toggleItem: { paddingHorizontal: spacing.md, paddingVertical: 6, borderRadius: radius.pill },
-  toggleItemOn: { backgroundColor: colors.accent },
-  toggleText: { color: colors.textMuted, fontSize: 13, fontWeight: '700' },
-  toggleTextOn: { color: colors.background },
-  tiles: { flexDirection: 'row', flexWrap: 'wrap', gap: spacing.sm },
-  tile: {
-    flexBasis: '48%',
-    flexGrow: 1,
-    backgroundColor: colors.surface,
-    borderRadius: radius.md,
-    padding: spacing.md,
-    borderWidth: StyleSheet.hairlineWidth,
-    borderColor: colors.border,
-  },
-  tileLabel: { color: colors.textMuted, fontSize: 12, fontWeight: '700', letterSpacing: 0.5 },
-  tileValue: { color: colors.text, fontSize: 24, fontWeight: '800', marginTop: 2 },
-  tileDetail: { color: colors.textMuted, fontSize: 12, marginTop: 2 },
-  continue: {
-    margin: spacing.md,
-    height: 48,
-    borderRadius: radius.pill,
-    alignItems: 'center',
-    justifyContent: 'center',
-    backgroundColor: colors.start,
-  },
-  continueText: { color: '#fff', fontSize: 16, fontWeight: '700' },
-  pressed: { opacity: 0.75 },
-  emptyWrap: { padding: spacing.xl, gap: spacing.sm },
-  emptyTitle: { color: colors.text, fontSize: 22, fontWeight: '800' },
-  emptyBody: { color: colors.textMuted, fontSize: 15, textAlign: 'center', lineHeight: 21 },
-  emptyButton: { alignSelf: 'stretch' },
+  content: { paddingHorizontal: spacing.md, paddingBottom: spacing.xl },
+  h1: { color: c.text, marginHorizontal: 4, marginTop: 8, height: 56, textAlignVertical: 'center' },
+  buttons: { gap: spacing.sm, marginTop: 12 },
+  recording: { marginTop: 12 },
+  latestHeader: { marginTop: 32, marginBottom: 12 },
+  allTimeHeader: { marginTop: 32, marginBottom: 4 },
+  emptyCard: { borderRadius: radius.card, overflow: 'hidden', backgroundColor: c.surface },
+  emptyText: { paddingTop: 16, paddingHorizontal: 20, paddingBottom: 18, gap: 4 },
+  emptyTitle: { color: c.text, fontFamily: type.button.fontFamily, fontSize: 17 },
+  muted: { color: c.textMuted, fontSize: 14, lineHeight: 20 },
 });

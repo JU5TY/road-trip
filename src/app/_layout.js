@@ -3,39 +3,67 @@
 // app headless.
 import { resumeActiveDrive } from '../services/locationService';
 
+import { useFonts } from 'expo-font';
 import { Stack, router } from 'expo-router';
 import { StatusBar } from 'expo-status-bar';
 import { useEffect } from 'react';
+import { View } from 'react-native';
 
-import { SettingsProvider } from '../context/SettingsContext';
-import { colors } from '../theme';
+import { SettingsProvider, useSettings } from '../context/SettingsContext';
+import { useTheme } from '../hooks/useTheme';
+import { fontFiles } from '../theme';
 
-export default function RootLayout() {
+function AppStack() {
+  const { scheme, c } = useTheme();
+  const { onboarded } = useSettings();
+  const [fontsLoaded, fontError] = useFonts(fontFiles);
+  const ready = (fontsLoaded || !!fontError) && onboarded !== null;
+
+  useEffect(() => {
+    if (fontError) console.warn('[app] fonts failed to load', fontError);
+  }, [fontError]);
+
   // On launch: if a drive was left recording (app killed, phone rebooted), make
   // sure tracking is running again and open the Record tab instead of Home.
+  // Waits until the navigator is mounted before navigating.
   useEffect(() => {
+    if (!ready || !onboarded) return;
     resumeActiveDrive()
       .then((res) => {
         if (res) router.navigate('/record');
       })
       .catch((err) => console.warn('[app] resume failed', err));
-  }, []);
+  }, [ready, onboarded]);
+
+  if (!ready) return <View style={{ flex: 1, backgroundColor: c.background }} />;
 
   return (
-    <SettingsProvider>
-      <StatusBar style="light" />
+    <>
+      <StatusBar style={scheme === 'dark' ? 'light' : 'dark'} />
+      {/* Every screen draws its own title or back button. */}
       <Stack
-        screenOptions={{
-          headerStyle: { backgroundColor: colors.background },
-          headerTintColor: colors.text,
-          headerShadowVisible: false,
-          contentStyle: { backgroundColor: colors.background },
-        }}
+        screenOptions={{ headerShown: false, contentStyle: { backgroundColor: c.background } }}
       >
-        <Stack.Screen name="(tabs)" options={{ headerShown: false }} />
-        <Stack.Screen name="trips/[id]" options={{ title: 'Trip' }} />
-        <Stack.Screen name="drives/[id]" options={{ title: 'Drive' }} />
+        {/* First launch only: Welcome, then the location explainer. */}
+        <Stack.Protected guard={!onboarded}>
+          <Stack.Screen name="welcome" />
+          <Stack.Screen name="permission" />
+        </Stack.Protected>
+        <Stack.Protected guard={onboarded}>
+          <Stack.Screen name="(tabs)" />
+          <Stack.Screen name="trips/[id]" />
+          <Stack.Screen name="drives/[id]" />
+          <Stack.Screen name="saved/[id]" options={{ gestureEnabled: false }} />
+        </Stack.Protected>
       </Stack>
+    </>
+  );
+}
+
+export default function RootLayout() {
+  return (
+    <SettingsProvider>
+      <AppStack />
     </SettingsProvider>
   );
 }

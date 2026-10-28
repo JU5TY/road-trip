@@ -176,3 +176,9 @@ export async function moveDrive(driveId, targetTripId = null) {
   });
   return newTripId;
 }
+
+/** Whether any drive (recording or completed) has ever been saved. */
+export async function hasAnyDrive() {
+  const db = await getDb();
+  return Boolean(await db.getFirstAsync('SELECT 1 FROM drives LIMIT 1'));
+}

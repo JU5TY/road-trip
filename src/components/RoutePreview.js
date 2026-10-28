@@ -1,7 +1,7 @@
 import { Platform, StyleSheet, View } from 'react-native';
 import MapView, { Polyline } from 'react-native-maps';
 
-import { colors } from '../theme';
+import { useStyles, useTheme } from '../hooks/useTheme';
 
 /** Region that fits all coordinates with some padding (no imperative fitting needed). */
 function regionFor(coordinates) {
@@ -25,17 +25,28 @@ function regionFor(coordinates) {
  * screen; iOS has no lite mode. Taps pass through to the parent. Pass `active={false}` to swap the map for a placeholder (e.g. when its
  * screen is in the background) so no native map is kept alive off-screen.
  * segments: [{ key, coordinates, color }]
+ * `width` (optional) makes a fixed-size thumbnail; `rounded` clips the corners.
  */
-export default function RoutePreview({ segments, height = 160, active = true }) {
+export default function RoutePreview({
+  segments,
+  height = 160,
+  width,
+  rounded = 0,
+  active = true,
+}) {
+  const { scheme } = useTheme();
+  const styles = useStyles(makeStyles);
   const all = segments.flatMap((s) => s.coordinates);
-  if (!active || all.length === 0) return <View style={[styles.placeholder, { height }]} />;
+  const box = { height, width, borderRadius: rounded, overflow: 'hidden' };
+  if (!active || all.length === 0) return <View style={[styles.placeholder, box]} />;
 
   return (
-    <View style={{ height }} pointerEvents="none">
+    <View style={box} pointerEvents="none">
       <MapView
         style={StyleSheet.absoluteFill}
         initialRegion={regionFor(all)}
         liteMode={Platform.OS === 'android'}
+        userInterfaceStyle={scheme}
         scrollEnabled={false}
         zoomEnabled={false}
         rotateEnabled={false}
@@ -51,6 +62,6 @@ export default function RoutePreview({ segments, height = 160, active = true }) 
   );
 }
 
-const styles = StyleSheet.create({
-  placeholder: { backgroundColor: colors.surfaceRaised },
+const makeStyles = (c) => ({
+  placeholder: { backgroundColor: c.surface },
 });

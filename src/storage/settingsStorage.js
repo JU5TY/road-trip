@@ -12,3 +12,31 @@ export function getUnits() {
 export function setUnits(units) {
   return Storage.setItemAsync(UNITS_KEY, units);
 }
+
+const BREAK_KEY = 'settings.breakReminderMinutes';
+
+// Minutes of driving before Record suggests a break; 0 turns the reminder off.
+export const BREAK_REMINDER_OPTIONS = [0, 60, 90, 120, 150, 180];
+export const DEFAULT_BREAK_REMINDER_MINUTES = 120;
+
+export function getBreakReminderMinutes() {
+  const raw = Storage.getItemSync(BREAK_KEY);
+  const saved = raw == null ? NaN : Number(raw);
+  return BREAK_REMINDER_OPTIONS.includes(saved) ? saved : DEFAULT_BREAK_REMINDER_MINUTES;
+}
+
+export function setBreakReminderMinutes(minutes) {
+  return Storage.setItemAsync(BREAK_KEY, String(minutes));
+}
+
+const ONBOARDED_KEY = 'settings.onboarded';
+
+/** True once Welcome has been passed; null when unknown (never saved). */
+export function getOnboarded() {
+  const raw = Storage.getItemSync(ONBOARDED_KEY);
+  return raw == null ? null : raw === 'true';
+}
+
+export function setOnboarded(done) {
+  return Storage.setItemAsync(ONBOARDED_KEY, String(done));
+}

@@ -5,7 +5,6 @@
 import { haversineDistance } from './geoMath';
 
 const GAP_MS = 30 * 1000; // no fixes for this long = stationary (phones go quiet when parked)
-const STATIONARY_MPS = 5 / 3.6;
 const MAX_PLAUSIBLE_SPEED_MPS = 90;
 
 /** Centered moving average of `y` over `window` points (odd), leaving other fields alone. */
@@ -46,7 +45,8 @@ export function elevationSeries(points, { offsetM = 0, maxPoints = 200 } = {}) {
   let distance = offsetM;
   points.forEach((p, i) => {
     if (i > 0) distance += haversineDistance(points[i - 1], p);
-    if (p.altitude !== null && p.altitude !== undefined) data.push(toDatum(p, distance, p.altitude));
+    if (p.altitude !== null && p.altitude !== undefined)
+      data.push(toDatum(p, distance, p.altitude));
   });
   // GPS altitude jumps by several metres between fixes; average it out.
   return thin(smooth(data, 9), maxPoints);
@@ -63,56 +63,33 @@ function speedAt(points, i) {
 }
 
 /**
- * Speed against time: [{ x: timestamp, y: m/s }]. Gaps longer than GAP_MS (rest
- * stops, parked) are drawn as zero speed rather than a line straight across.
+ * Speed against distance: [{ x: metres from start (+ offsetM), y: m/s }]. A gap
+ * longer than GAP_MS (rest stop, parked) breaks the line: the first datum after
+ * it has `breakBefore: true`, so stops show as gaps rather than dips to zero.
  */
-export function speedSeries(points, { maxPoints = 240 } = {}) {
-  const data = [];
+export function speedByDistanceSeries(points, { offsetM = 0, maxPoints = 240 } = {}) {
+  const runs = [];
+  let run = [];
+  let distance = offsetM;
   points.forEach((p, i) => {
     const prev = points[i - 1];
-    if (prev && p.timestamp - prev.timestamp > GAP_MS) {
-      data.push(toDatum(prev, prev.timestamp + 1, 0, { keep: true }));
-      data.push(toDatum(p, p.timestamp - 1, 0, { keep: true }));
+    if (prev) {
+      distance += haversineDistance(prev, p);
+      if (p.timestamp - prev.timestamp > GAP_MS && run.length > 0) {
+        runs.push(run);
+        run = [];
+      }
     }
-    data.push(toDatum(p, p.timestamp, Math.min(speedAt(points, i), MAX_PLAUSIBLE_SPEED_MPS)));
+    run.push(toDatum(p, distance, Math.min(speedAt(points, i), MAX_PLAUSIBLE_SPEED_MPS)));
   });
-  // ~10 s average; then pin the gap markers back to 0 so stops stay flat.
-  const smoothed = smooth(data, 5).map((d) => (d.keep ? { ...d, y: 0 } : d));
-  return thin(smoothed, maxPoints);
-}
-
-/** Speed band thresholds (m/s) and labels per unit system. */
-function bandDefinitions(units) {
-  if (units === 'imperial') {
-    const mph = 0.44704;
-    return [
-      { label: 'Under 30 mph', max: 30 * mph },
-      { label: '30–55 mph', max: 55 * mph },
-      { label: 'Over 55 mph', max: Infinity },
-    ];
-  }
-  return [
-    { label: 'Under 50 km/h', max: 50 / 3.6 },
-    { label: '50–90 km/h', max: 90 / 3.6 },
-    { label: 'Over 90 km/h', max: Infinity },
-  ];
-}
-
-/**
- * Time spent moving in each speed band, across one or more drives' points.
- * Stationary time and gaps are left out. Returns [{ label, ms, fraction }].
- */
-export function speedBands(pointLists, units) {
-  const bands = bandDefinitions(units).map((b) => ({ ...b, ms: 0 }));
-  for (const points of pointLists) {
-    for (let i = 1; i < points.length; i++) {
-      const dt = points[i].timestamp - points[i - 1].timestamp;
-      if (dt <= 0 || dt > GAP_MS) continue;
-      const v = (speedAt(points, i - 1) + speedAt(points, i)) / 2;
-      if (v < STATIONARY_MPS || v > MAX_PLAUSIBLE_SPEED_MPS) continue;
-      bands.find((b) => v < b.max).ms += dt;
-    }
-  }
-  const total = bands.reduce((sum, b) => sum + b.ms, 0);
-  return bands.map(({ label, ms }) => ({ label, ms, fraction: total > 0 ? ms / total : 0 }));
+  if (run.length > 0) runs.push(run);
+  // ~10 s average within each run, so a stop doesn't blur the speeds around it.
+  const data = runs.flatMap((r, i) =>
+    smooth(r, 5).map((d, j) => ({
+      ...d,
+      ...(j === 0 && i > 0 ? { breakBefore: true } : {}),
+      ...(j === 0 || j === r.length - 1 ? { keep: true } : {}),
+    }))
+  );
+  return thin(data, maxPoints);
 }

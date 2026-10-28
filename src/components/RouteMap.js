@@ -1,8 +1,10 @@
 import { useImperativeHandle, useRef } from 'react';
 import { StyleSheet, Text, View } from 'react-native';
 import MapView, { Marker, Polyline } from 'react-native-maps';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
-import { colors, radius, spacing } from '../theme';
+import { useStyles, useTheme } from '../hooks/useTheme';
+import { radius, spacing, type } from '../theme';
 
 const MAP_PADDING = { top: 48, right: 48, bottom: 48, left: 48 };
 const FOCUS_DELTA = 0.01; // ~1 km across when zooming to a single marker
@@ -14,8 +16,19 @@ const FOCUS_DELTA = 0.01; // ~1 km across when zooming to a single marker
  * highlight: optional { latitude, longitude } shown as a dot (e.g. while
  *            dragging across a chart).
  * `ref` exposes focusMarker(key): zoom to that marker and open its callout.
+ * `flat` fills its parent edge to edge, under the status bar (Trip / Day pages).
  */
-export default function RouteMap({ segments, markers = [], height = 320, highlight, ref }) {
+export default function RouteMap({
+  segments,
+  markers = [],
+  height = 320,
+  flat = false,
+  highlight,
+  ref,
+}) {
+  const { scheme } = useTheme();
+  const insets = useSafeAreaInsets();
+  const styles = useStyles(makeStyles);
   const mapRef = useRef(null);
   const markerRefs = useRef(new Map());
   const all = segments.flatMap((s) => s.coordinates);
@@ -34,17 +47,21 @@ export default function RouteMap({ segments, markers = [], height = 320, highlig
 
   const fit = () => {
     if (all.length > 1) {
-      mapRef.current?.fitToCoordinates(all, { edgePadding: MAP_PADDING, animated: false });
+      const edgePadding = flat
+        ? { ...MAP_PADDING, top: MAP_PADDING.top + insets.top }
+        : MAP_PADDING;
+      mapRef.current?.fitToCoordinates(all, { edgePadding, animated: false });
     }
   };
 
   return (
-    <View style={[styles.wrap, { height }]}>
+    <View style={flat ? styles.flat : [styles.wrap, { height }]}>
       {all.length > 0 ? (
         <MapView
           ref={mapRef}
           style={StyleSheet.absoluteFill}
           onMapReady={fit}
+          userInterfaceStyle={scheme}
           initialRegion={{
             latitude: all[0].latitude,
             longitude: all[0].longitude,
@@ -53,7 +70,12 @@ export default function RouteMap({ segments, markers = [], height = 320, highlig
           }}
         >
           {segments.map((s) => (
-            <Polyline key={s.key} coordinates={s.coordinates} strokeColor={s.color} strokeWidth={5} />
+            <Polyline
+              key={s.key}
+              coordinates={s.coordinates}
+              strokeColor={s.color}
+              strokeWidth={5}
+            />
           ))}
           {markers.map((m) => (
             <Marker
@@ -87,16 +109,17 @@ export default function RouteMap({ segments, markers = [], height = 320, highlig
   );
 }
 
-const styles = StyleSheet.create({
-  wrap: { borderRadius: radius.lg, overflow: 'hidden', backgroundColor: colors.surface },
+const makeStyles = (c) => ({
+  wrap: { borderRadius: radius.lg, overflow: 'hidden', backgroundColor: c.surface },
+  flat: { flex: 1, backgroundColor: c.surface },
   empty: { flex: 1, alignItems: 'center', justifyContent: 'center', padding: spacing.md },
-  emptyText: { color: colors.textMuted, fontSize: 13 },
+  emptyText: { ...type.small, color: c.textMuted },
   highlight: {
     width: 16,
     height: 16,
     borderRadius: 8,
-    backgroundColor: colors.link,
+    backgroundColor: c.accent,
     borderWidth: 3,
-    borderColor: '#fff',
+    borderColor: c.background,
   },
 });

@@ -1,11 +1,16 @@
+import * as Location from 'expo-location';
 import { router, useFocusEffect, useLocalSearchParams } from 'expo-router';
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { ActivityIndicator, Alert, Linking, Pressable, StyleSheet, Text, View } from 'react-native';
-import { SafeAreaView } from 'react-native-safe-area-context';
+import MapView, { Polyline } from 'react-native-maps';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
-import ActionSheet from '../components/ActionSheet';
 import PermissionSheet from '../components/PermissionSheet';
+import Icon from '../components/ui/Icon';
+import IconButton from '../components/ui/IconButton';
+import StatCard from '../components/ui/StatCard';
 import { useSettings } from '../context/SettingsContext';
+import { useStyles, useTheme } from '../hooks/useTheme';
 import {
   canTrackInBackground,
   getLocationAccess,
@@ -13,49 +18,117 @@ import {
   startDrive,
   stopDrive,
 } from '../services/locationService';
-import { getActiveDrive } from '../storage/driveStorage';
+import { getActiveDrive, getDriveRoutePreview } from '../storage/driveStorage';
 import { getContinuableTrip, getTrip } from '../storage/tripStorage';
-import { colors, radius, spacing } from '../theme';
-import {
-  distanceUnit,
-  formatDuration,
-  formatElevation,
-  speedUnit,
-  toDistance,
-  toSpeed,
-} from '../utils/format';
+import { spacing, type } from '../theme';
+import { distanceParts, formatDistance, formatDuration } from '../utils/format';
 import { liveMetrics } from '../utils/geoMath';
-import { CONTINUE_WINDOW_MS, dayNumberFor, tripTitle } from '../utils/tripSummary';
+import { CONTINUE_WINDOW_MS, dayNumberFor, summarizeDrives, tripTitle } from '../utils/tripSummary';
 
 const GOOGLE_MAPS_NAV_URL = 'https://www.google.com/maps/dir/?api=1&travelmode=driving';
 const REFRESH_MS = 1000;
+const ROUTE_REFRESH_MS = 10 * 1000;
+const ROUTE_POINTS = 400;
+const POSITION_DELTA = 0.02; // ~2 km across when centring on the car
 
-function Metric({ label, value, unit, large }) {
+/**
+ * Map for Record: the live route so far and the phone's position. Centres on
+ * the latest fix (or the route) when asked through `centreKey`.
+ */
+function LiveMap({ route, position, centreKey }) {
+  const { scheme, c } = useTheme();
+  const mapRef = useRef(null);
+
+  useEffect(() => {
+    if (!position) return;
+    mapRef.current?.animateToRegion(
+      { ...position, latitudeDelta: POSITION_DELTA, longitudeDelta: POSITION_DELTA },
+      500
+    );
+    // Only re-centre when asked (or on the first fix), not on every new fix.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [centreKey, Boolean(position)]);
+
   return (
-    <View style={[styles.metric, large && styles.metricLarge]}>
-      <Text style={styles.metricLabel}>{label}</Text>
-      <Text style={[styles.metricValue, large && styles.metricValueLarge]} numberOfLines={1} adjustsFontSizeToFit>
-        {value}
-        {unit ? <Text style={styles.metricUnit}> {unit}</Text> : null}
-      </Text>
-    </View>
+    <MapView
+      ref={mapRef}
+      style={StyleSheet.absoluteFill}
+      userInterfaceStyle={scheme}
+      showsUserLocation
+      showsMyLocationButton={false}
+      toolbarEnabled={false}
+      initialRegion={
+        position
+          ? { ...position, latitudeDelta: POSITION_DELTA, longitudeDelta: POSITION_DELTA }
+          : undefined
+      }
+    >
+      {route.length > 1 ? (
+        <Polyline coordinates={route} strokeColor={c.accent} strokeWidth={5} />
+      ) : null}
+    </MapView>
+  );
+}
+
+/** Radio card for picking the trip on the Ready screen. */
+function TripOption({ icon, title, subtitle, selected, onPress }) {
+  const { c } = useTheme();
+  const styles = useStyles(makeStyles);
+  return (
+    <Pressable
+      onPress={onPress}
+      style={[styles.option, selected && styles.optionOn]}
+      accessibilityRole="radio"
+      accessibilityState={{ checked: selected }}
+    >
+      <Icon name={icon} filled size={24} color={selected ? c.onAccentContainer : c.textMuted} />
+      <View style={styles.flex}>
+        <Text
+          style={[type.bodyStrong, selected ? styles.onContainer : styles.text]}
+          numberOfLines={1}
+        >
+          {title}
+        </Text>
+        <Text
+          style={[type.small, selected ? styles.onContainerMuted : styles.muted]}
+          numberOfLines={1}
+        >
+          {subtitle}
+        </Text>
+      </View>
+      <Icon
+        name={selected ? 'radio_button_checked' : 'radio_button_unchecked'}
+        filled={selected}
+        size={24}
+        color={selected ? c.accent : c.textMuted}
+      />
+    </Pressable>
   );
 }
 
 export default function RecordScreen() {
-  const { continueTripId } = useLocalSearchParams();
-  const { units } = useSettings();
+  const { continueTripId, start } = useLocalSearchParams();
+  const { units, breakReminderMinutes } = useSettings();
+  const { c } = useTheme();
+  const styles = useStyles(makeStyles);
+  const insets = useSafeAreaInsets();
   const [drive, setDrive] = useState(null); // the active drive, if recording
   // { driveId, text }, e.g. "Scotland 2026 · Day 2" for the active drive.
   const [tripLabelFor, setTripLabelFor] = useState(null);
+  // { driveId, points }: the live route so far, thinned.
+  const [routeFor, setRouteFor] = useState(null);
   const [now, setNow] = useState(() => Date.now());
   const [busy, setBusy] = useState(false);
   const [foregroundOnly, setForegroundOnly] = useState(false);
   const [sheet, setSheet] = useState(null); // PermissionSheet kind, or null
-  const [continueOffer, setContinueOffer] = useState(null); // { trip, dayNumber }
+  const [recent, setRecent] = useState(null); // trip that can be continued, if any
+  const [choice, setChoice] = useState('continue'); // 'continue' | 'new'
+  const [mapHidden, setMapHidden] = useState(false);
+  const [centreKey, setCentreKey] = useState(0);
+  const [here, setHere] = useState(null); // last known position, for the Ready map
 
-  // Trip chosen before the permission check (e.g. "Continue" on Home); undefined = ask.
-  const chosenTripRef = useRef(undefined);
+  // Trip chosen before the permission check (null = new trip).
+  const chosenTripRef = useRef(null);
 
   // Expo Go can only record while the app is open; warn while recording there.
   useEffect(() => {
@@ -63,6 +136,7 @@ export default function RecordScreen() {
   }, []);
 
   // The background task writes to SQLite; poll it once a second while visible.
+  // Also refresh the trip that Ready offers to continue.
   useFocusEffect(
     useCallback(() => {
       let cancelled = false;
@@ -74,6 +148,19 @@ export default function RecordScreen() {
         }
       };
       tick();
+      getContinuableTrip(CONTINUE_WINDOW_MS)
+        .then((trip) => !cancelled && setRecent(trip))
+        .catch(() => {});
+      // Centre the Ready map on the phone, without asking for access just for that.
+      getLocationAccess()
+        .then((access) => (access.granted ? Location.getLastKnownPositionAsync() : null))
+        .then(
+          (pos) =>
+            !cancelled &&
+            pos &&
+            setHere({ latitude: pos.coords.latitude, longitude: pos.coords.longitude })
+        )
+        .catch(() => {});
       const id = setInterval(tick, REFRESH_MS);
       return () => {
         cancelled = true;
@@ -93,13 +180,32 @@ export default function RecordScreen() {
       .then((trip) => {
         if (cancelled || !trip) return;
         const day = dayNumberFor(trip.drives, activeStartedAt);
-        setTripLabelFor({ driveId: activeId, text: `${tripTitle(trip) ?? 'New trip'} · Day ${day}` });
+        setTripLabelFor({
+          driveId: activeId,
+          text: `${tripTitle(trip) ?? 'New trip'} · Day ${day}`,
+        });
       })
       .catch((err) => console.warn('[record] trip label failed', err));
     return () => {
       cancelled = true;
     };
   }, [activeId, activeTripId, activeStartedAt]);
+
+  // The route drawn so far; refreshed less often than the numbers.
+  useEffect(() => {
+    if (!activeId) return;
+    let cancelled = false;
+    const load = () =>
+      getDriveRoutePreview(activeId, ROUTE_POINTS)
+        .then((points) => !cancelled && setRouteFor({ driveId: activeId, points }))
+        .catch((err) => console.warn('[record] route failed', err));
+    load();
+    const id = setInterval(load, ROUTE_REFRESH_MS);
+    return () => {
+      cancelled = true;
+      clearInterval(id);
+    };
+  }, [activeId]);
 
   const run = async (action) => {
     setBusy(true);
@@ -112,56 +218,42 @@ export default function RecordScreen() {
     }
   };
 
-  const beginDrive = (tripId = null) =>
+  const beginDrive = (tripId) =>
     run(async () => {
       const res = await startDrive({ tripId });
       setDrive(res.drive);
     });
 
-  /** Offer to continue a recent trip, otherwise start a new one. */
-  const chooseTripAndStart = async () => {
-    const recent = await getContinuableTrip(CONTINUE_WINDOW_MS).catch(() => null);
-    if (!recent) return beginDrive(null);
-    setContinueOffer({ trip: recent, dayNumber: dayNumberFor(recent.drives, Date.now()) });
-  };
-
-  /** After location access is sorted: use the trip chosen up front, or ask. */
-  const proceed = () => {
-    const tripId = chosenTripRef.current;
-    chosenTripRef.current = undefined;
-    return tripId === undefined ? chooseTripAndStart() : beginDrive(tripId);
-  };
-
-  /** Start recording, into `tripId` if given, otherwise offering Continue / New. */
+  /** Start recording into `tripId` (null = new trip), once location access is sorted. */
   const startRecording = async (tripId) => {
     chosenTripRef.current = tripId;
     // Explain before (or instead of) the system prompt; start straight away once allowed.
     const access = await getLocationAccess();
     if (!access.granted) return setSheet(access.canAskAgain ? 'ask' : 'blocked');
     if (!access.precise) return setSheet('approximate');
-    return proceed();
+    return beginDrive(tripId);
   };
 
-  const onToggle = () => {
-    if (!drive) return startRecording(undefined);
-    return run(async () => {
-      await stopDrive();
+  const stop = () =>
+    run(async () => {
+      const driveId = await stopDrive();
       setDrive(null);
+      setMapHidden(false);
+      if (driveId) router.push(`/saved/${driveId}`);
     });
-  };
 
-  // "Continue trip" on Home lands here with the trip to continue.
+  // Home's "Start a trip" / "Continue …" land here with what to record.
   useEffect(() => {
-    if (!continueTripId) return;
-    router.setParams({ continueTripId: undefined });
+    if (!continueTripId && !start) return;
+    router.setParams({ continueTripId: undefined, start: undefined });
     getActiveDrive()
       .then((active) => {
-        if (!active) startRecording(Number(continueTripId));
+        if (!active) startRecording(continueTripId ? Number(continueTripId) : null);
       })
-      .catch((err) => console.warn('[record] continue failed', err));
-    // startRecording is recreated each render; only the param matters here.
+      .catch((err) => console.warn('[record] start failed', err));
+    // startRecording is recreated each render; only the params matter here.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [continueTripId]);
+  }, [continueTripId, start]);
 
   const onSheetPrimary = async () => {
     const kind = sheet;
@@ -177,19 +269,13 @@ export default function RecordScreen() {
       return;
     }
     if (!access.precise) return setSheet('approximate');
-    return proceed();
+    return beginDrive(chosenTripRef.current);
   };
 
   const onSheetSecondary = () => {
     const kind = sheet;
     setSheet(null);
-    if (kind === 'approximate') proceed();
-    else chosenTripRef.current = undefined;
-  };
-
-  const startFromOffer = (tripId) => {
-    setContinueOffer(null);
-    beginDrive(tripId);
+    if (kind === 'approximate') beginDrive(chosenTripRef.current);
   };
 
   const openGoogleMaps = () =>
@@ -197,158 +283,297 @@ export default function RecordScreen() {
       Alert.alert('Google Maps', 'Could not open Google Maps.')
     );
 
-  const tripLabel = tripLabelFor && tripLabelFor.driveId === activeId ? tripLabelFor.text : null;
   const live = drive ? liveMetrics(drive, now) : null;
-  const active = Boolean(drive);
-  const offerTitle = continueOffer
-    ? (tripTitle(continueOffer.trip) ?? 'your last trip')
-    : null;
+  const lastFix = drive?.stats.lastFix;
+  const position = lastFix ? { latitude: lastFix.latitude, longitude: lastFix.longitude } : null;
+  const permissionSheet = (
+    <PermissionSheet kind={sheet} onPrimary={onSheetPrimary} onSecondary={onSheetSecondary} />
+  );
+
+  // ---- Ready: pick the trip and start.
+  if (!drive) {
+    const canContinue = Boolean(recent);
+    const continuing = canContinue && choice === 'continue';
+    const recentSummary = recent ? summarizeDrives(recent.drives) : null;
+    return (
+      <View style={styles.screen}>
+        {permissionSheet}
+        <View style={[styles.map, styles.mapShrink, { flexBasis: 380 + insets.top }]}>
+          <LiveMap route={[]} position={here} centreKey={centreKey} />
+          {here ? (
+            <IconButton
+              icon="my_location"
+              variant="floating"
+              accessibilityLabel="Centre on my position"
+              onPress={() => setCentreKey((k) => k + 1)}
+              style={[styles.mapButtonRight, { top: insets.top + 12 }]}
+            />
+          ) : null}
+        </View>
+        <View style={styles.readyBody}>
+          <Text style={[type.title, styles.text, styles.readyTitle]}>Ready to go</Text>
+          {canContinue ? (
+            <View style={styles.options} role="radiogroup">
+              <TripOption
+                icon="play_arrow"
+                title={`Continue ${tripTitle(recent) ?? 'last trip'}`}
+                subtitle={`Day ${dayNumberFor(recent.drives, now)} · ${formatDistance(recentSummary.distanceM, units, 0)} so far`}
+                selected={continuing}
+                onPress={() => setChoice('continue')}
+              />
+              <TripOption
+                icon="add_location_alt"
+                title="New trip"
+                subtitle="Start a fresh trip"
+                selected={!continuing}
+                onPress={() => setChoice('new')}
+              />
+            </View>
+          ) : (
+            <Text style={[type.body, styles.muted, styles.readyHint]}>
+              Starts a new trip. Drive again within 3 days and you can add it as the next day.
+            </Text>
+          )}
+          <View style={styles.startWrap}>
+            {busy ? (
+              <ActivityIndicator color={c.accent} style={styles.startBusy} />
+            ) : (
+              <IconButton
+                icon="play_arrow"
+                filled
+                variant="filled"
+                size={80}
+                iconSize={40}
+                label="Start"
+                accessibilityLabel={
+                  continuing ? `Start day ${dayNumberFor(recent.drives, now)}` : 'Start a new trip'
+                }
+                onPress={() => startRecording(continuing ? recent.id : null)}
+              />
+            )}
+          </View>
+        </View>
+      </View>
+    );
+  }
+
+  // ---- Recording: full screen, no nav bar.
+  const tripLabel = tripLabelFor && tripLabelFor.driveId === activeId ? tripLabelFor.text : null;
+  const route = routeFor && routeFor.driveId === activeId ? routeFor.points : [];
+  const status = !live.hasFix
+    ? 'Waiting for GPS'
+    : live.waitingToSetOff
+      ? 'Waiting to set off'
+      : live.isAutoPaused
+        ? 'Paused'
+        : 'Recording';
+  const distance = distanceParts(live.distanceM, units);
+  const breakDue = breakReminderMinutes > 0 && live.stintMs >= breakReminderMinutes * 60000;
+  const minimise = () => router.navigate('/');
 
   return (
-    <SafeAreaView style={styles.screen} edges={['bottom']}>
-      <PermissionSheet kind={sheet} onPrimary={onSheetPrimary} onSecondary={onSheetSecondary} />
-      <ActionSheet
-        visible={Boolean(continueOffer)}
-        title="Start recording"
-        actions={
-          continueOffer
-            ? [
-                {
-                  label: `Continue “${offerTitle}”`,
-                  detail: `Day ${continueOffer.dayNumber}`,
-                  style: 'primary',
-                  onPress: () => startFromOffer(continueOffer.trip.id),
-                },
-                { label: 'Start a new trip', onPress: () => startFromOffer(null) },
-              ]
-            : []
-        }
-        onClose={() => setContinueOffer(null)}
-      />
-      <View style={styles.status}>
-        <View style={[styles.dot, { backgroundColor: active ? colors.start : colors.textMuted }]} />
-        <Text style={styles.statusText}>
-          {!active
-            ? 'Ready'
-            : !live.hasFix
-              ? 'Waiting for GPS…'
-              : live.waitingToSetOff
-                ? 'Recording · waiting to set off'
-                : live.isAutoPaused
-                  ? 'Auto-paused · rest stop'
-                  : 'Recording'}
-        </Text>
-      </View>
-      {tripLabel ? (
-        <Text style={styles.tripLabel} numberOfLines={1}>
-          {tripLabel}
-        </Text>
+    <View style={styles.screen}>
+      {permissionSheet}
+      {!mapHidden ? (
+        <View style={[styles.map, styles.mapShrink, { flexBasis: 370 + insets.top }]}>
+          <LiveMap route={route} position={position} centreKey={centreKey} />
+          <IconButton
+            icon="expand_more"
+            iconSize={26}
+            variant="floating"
+            accessibilityLabel="Minimise, keep recording"
+            onPress={minimise}
+            style={[styles.mapButtonLeft, { top: insets.top + 12 }]}
+          />
+          <IconButton
+            icon="my_location"
+            variant="floating"
+            accessibilityLabel="Centre on my position"
+            onPress={() => setCentreKey((k) => k + 1)}
+            style={[styles.mapButtonRight, { top: insets.top + 12 }]}
+          />
+        </View>
       ) : null}
 
-      {foregroundOnly && active ? (
-        <Text style={styles.warning}>
-          Expo Go: tracking only while the app is open. Use a development build for background
-          tracking.
-        </Text>
-      ) : null}
-
-      <Metric
-        large
-        label="CURRENT SPEED"
-        value={live ? Math.round(toSpeed(live.currentSpeedMps, units)) : 0}
-        unit={speedUnit(units)}
-      />
-      <View style={styles.grid}>
-        <Metric
-          label="DISTANCE"
-          value={toDistance(live?.distanceM ?? 0, units).toFixed(2)}
-          unit={distanceUnit(units)}
-        />
-        <Metric label="ELAPSED" value={live ? formatDuration(live.elapsedMs) : '0:00'} />
-      </View>
-      <View style={styles.grid}>
-        <Metric label="ELEVATION" value={live ? formatElevation(live.currentAltitudeM, units) : '—'} />
-        <Metric label="SINCE BREAK" value={live ? formatDuration(live.stintMs) : '—'} />
-      </View>
-
-      <View style={styles.spacer} />
-
-      <Pressable
-        onPress={onToggle}
-        disabled={busy}
-        style={({ pressed }) => [
-          styles.toggle,
-          { backgroundColor: active ? colors.stop : colors.start },
-          pressed && styles.pressed,
+      <View
+        style={[
+          styles.recordBody,
+          {
+            paddingTop: mapHidden ? insets.top + spacing.md : spacing.lg,
+            paddingBottom: insets.bottom + 36,
+          },
         ]}
-        accessibilityRole="button"
       >
-        {busy ? (
-          <ActivityIndicator color="#fff" />
-        ) : (
-          <Text style={styles.toggleText}>{active ? 'STOP TRIP' : 'START TRIP'}</Text>
-        )}
-      </Pressable>
+        <View style={styles.statusRow}>
+          <View style={[styles.statusDot, status !== 'Recording' && styles.statusDotIdle]} />
+          <Text style={[type.label, styles.text]}>{status}</Text>
+          <Text style={[type.label, styles.muted, styles.statusTrip]} numberOfLines={1}>
+            {tripLabel ? `· ${tripLabel}` : ''}
+          </Text>
+          {mapHidden ? (
+            <IconButton
+              icon="expand_more"
+              iconSize={26}
+              accessibilityLabel="Minimise, keep recording"
+              onPress={minimise}
+            />
+          ) : null}
+        </View>
 
-      <Pressable
-        onPress={openGoogleMaps}
-        style={({ pressed }) => [styles.secondary, pressed && styles.pressed]}
-        accessibilityRole="link"
-      >
-        <Text style={styles.secondaryText}>Open Google Maps Navigation</Text>
-      </Pressable>
-    </SafeAreaView>
+        {foregroundOnly ? (
+          <Text style={[type.small, styles.muted, styles.expoGo]}>
+            Expo Go records only while the app is open. Use a development build for background
+            tracking.
+          </Text>
+        ) : null}
+
+        <View
+          style={mapHidden ? styles.heroCentred : styles.hero}
+          accessible
+          accessibilityLabel={`Distance ${distance.value} ${distance.unit}`}
+        >
+          <Text
+            style={mapHidden ? styles.heroBig : styles.heroValue}
+            numberOfLines={1}
+            adjustsFontSizeToFit
+          >
+            {distance.value}
+          </Text>
+          <Text style={mapHidden ? styles.heroBigUnit : styles.heroUnit}>{distance.unit}</Text>
+        </View>
+
+        <View style={styles.cards}>
+          <StatCard
+            style={styles.half}
+            tone="accent"
+            icon="schedule"
+            label="Driving time"
+            value={formatDuration(live.drivingMs)}
+          />
+          <StatCard
+            style={styles.half}
+            notch
+            tone={breakDue ? 'warning' : 'surface'}
+            icon="local_cafe"
+            label={breakDue ? 'Time for a break' : 'Since break'}
+            value={live.stintMs > 0 ? formatDuration(live.stintMs) : '—'}
+          />
+        </View>
+
+        <View style={styles.controls}>
+          <IconButton
+            icon="near_me"
+            size={56}
+            iconSize={26}
+            label="Maps"
+            onPress={openGoogleMaps}
+            style={styles.sideControl}
+          />
+          {busy ? (
+            <ActivityIndicator color={c.stop} style={styles.stopBusy} />
+          ) : (
+            <IconButton
+              icon="stop"
+              filled
+              variant="stop"
+              size={80}
+              iconSize={38}
+              label="Stop"
+              accessibilityLabel="Stop recording"
+              onPress={stop}
+            />
+          )}
+          <IconButton
+            icon={mapHidden ? 'map' : 'visibility_off'}
+            size={56}
+            iconSize={26}
+            label={mapHidden ? 'Show map' : 'Hide map'}
+            onPress={() => setMapHidden((h) => !h)}
+            style={styles.sideControl}
+          />
+        </View>
+      </View>
+    </View>
   );
 }
 
-const styles = StyleSheet.create({
-  screen: { flex: 1, backgroundColor: colors.background, padding: spacing.md, gap: spacing.sm },
-  status: { flexDirection: 'row', alignItems: 'center', gap: spacing.sm, marginBottom: spacing.xs },
-  dot: { width: 10, height: 10, borderRadius: 5 },
-  statusText: { color: colors.textMuted, fontSize: 15, fontWeight: '600' },
-  tripLabel: { color: colors.text, fontSize: 17, fontWeight: '700', marginBottom: spacing.xs },
-  warning: {
-    color: colors.accent,
-    fontSize: 13,
-    backgroundColor: colors.surface,
-    padding: spacing.sm,
-    borderRadius: radius.md,
+const makeStyles = (c) => ({
+  screen: { flex: 1, backgroundColor: c.background },
+  map: { borderBottomWidth: 1, borderBottomColor: c.outline, backgroundColor: c.surface },
+  // Design height, but the map gives way on shorter screens so the controls keep their spacing.
+  mapShrink: { flexGrow: 0, flexShrink: 1, minHeight: 180 },
+  mapButtonLeft: { position: 'absolute', left: 12 },
+  mapButtonRight: { position: 'absolute', right: 12 },
+  flex: { flex: 1, minWidth: 0 },
+  text: { color: c.text },
+  muted: { color: c.textMuted },
+  onContainer: { color: c.onAccentContainer },
+  onContainerMuted: { color: c.accentContainerMuted },
+
+  readyBody: {
+    flexGrow: 1,
+    flexShrink: 0,
+    gap: 24, // minimum spacing when space-between has nothing to share
+    justifyContent: 'space-between',
+    paddingHorizontal: spacing.md,
+    paddingVertical: 20,
   },
-  grid: { flexDirection: 'row', gap: spacing.sm },
-  metric: {
-    flex: 1,
-    backgroundColor: colors.surface,
-    borderRadius: radius.md,
-    padding: spacing.md,
-    borderWidth: StyleSheet.hairlineWidth,
-    borderColor: colors.border,
-  },
-  metricLarge: { flex: 0, alignItems: 'center', paddingVertical: spacing.lg },
-  metricLabel: { color: colors.textMuted, fontSize: 12, fontWeight: '700', letterSpacing: 1 },
-  metricValue: {
-    color: colors.text,
-    fontSize: 30,
-    fontWeight: '700',
-    marginTop: spacing.xs,
-    fontVariant: ['tabular-nums'],
-  },
-  metricValueLarge: { fontSize: 72 },
-  metricUnit: { fontSize: 16, color: colors.textMuted, fontWeight: '600' },
-  spacer: { flex: 1 },
-  toggle: {
-    height: 72,
-    borderRadius: radius.pill,
+  readyTitle: { marginHorizontal: 4 },
+  readyHint: { marginHorizontal: 4 },
+  options: { gap: 8 },
+  option: {
+    flexDirection: 'row',
     alignItems: 'center',
-    justifyContent: 'center',
+    gap: 14,
+    borderRadius: 20,
+    borderWidth: 1,
+    borderColor: c.outline,
+    paddingVertical: 14,
+    paddingHorizontal: 16,
   },
-  toggleText: { color: '#fff', fontSize: 22, fontWeight: '800', letterSpacing: 2 },
-  secondary: {
-    height: 52,
-    borderRadius: radius.pill,
+  optionOn: {
+    backgroundColor: c.accentContainer,
+    borderWidth: 2,
+    borderColor: c.accent,
+    paddingVertical: 13,
+    paddingHorizontal: 15,
+  },
+  startWrap: { alignItems: 'center' },
+  startBusy: { height: 108 },
+
+  recordBody: {
+    flexGrow: 1,
+    flexShrink: 0,
+    gap: 20, // minimum spacing when space-between has nothing to share
+    justifyContent: 'space-between',
+    paddingHorizontal: spacing.md,
+  },
+  statusRow: {
+    flexDirection: 'row',
     alignItems: 'center',
-    justifyContent: 'center',
-    backgroundColor: colors.surfaceRaised,
+    gap: 8,
+    marginHorizontal: 4,
+    minHeight: 24,
   },
-  secondaryText: { color: colors.text, fontSize: 16, fontWeight: '600' },
-  pressed: { opacity: 0.75 },
+  statusDot: { width: 10, height: 10, borderRadius: 5, backgroundColor: c.finish },
+  statusDotIdle: { backgroundColor: c.textMuted },
+  statusTrip: { flex: 1, fontFamily: type.nav.fontFamily },
+  expoGo: { marginHorizontal: 4 },
+  hero: { flexDirection: 'row', alignItems: 'baseline', gap: 10, marginHorizontal: 4 },
+  heroValue: { ...type.hero, color: c.text, flexShrink: 1 },
+  heroUnit: { ...type.title, fontFamily: type.bodyLarge.fontFamily, color: c.textMuted },
+  heroCentred: { alignItems: 'center', marginTop: 24 },
+  heroBig: { ...type.hero, fontSize: 136, lineHeight: 136, letterSpacing: -4, color: c.text },
+  heroBigUnit: {
+    ...type.title,
+    fontFamily: type.bodyLarge.fontFamily,
+    fontSize: 28,
+    color: c.textMuted,
+    marginTop: 8,
+  },
+  cards: { flexDirection: 'row', gap: 10 },
+  half: { flex: 1, paddingVertical: 16 },
+  controls: { flexDirection: 'row', alignItems: 'flex-start', justifyContent: 'space-around' },
+  sideControl: { paddingTop: 12 },
+  stopBusy: { width: 80, height: 108 },
 });

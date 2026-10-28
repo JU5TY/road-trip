@@ -18,8 +18,7 @@ export const toSpeed = (mps, units) =>
 export const formatDistance = (meters, units, digits = 1) =>
   `${toDistance(meters, units).toFixed(digits)} ${distanceUnit(units)}`;
 
-export const formatSpeed = (mps, units) =>
-  `${Math.round(toSpeed(mps, units))} ${speedUnit(units)}`;
+export const formatSpeed = (mps, units) => `${Math.round(toSpeed(mps, units))} ${speedUnit(units)}`;
 
 /** Elevation in meters, or feet when imperial. */
 export function formatElevation(m, units) {
@@ -74,3 +73,44 @@ export function formatDateRange(startTs, endTs) {
 /** "Mon 3 Nov", without the year, for day headings inside a trip. */
 export const formatDayDate = (ts) =>
   new Date(ts).toLocaleDateString(undefined, { weekday: 'short', day: 'numeric', month: 'short' });
+
+const grouped = (n, digits = 0) =>
+  n.toLocaleString(undefined, { minimumFractionDigits: digits, maximumFractionDigits: digits });
+
+/** Hero distance split for big type: 780 km -> { value: '780', unit: 'km' }; one decimal under 100. */
+export function distanceParts(meters, units) {
+  const v = toDistance(meters, units);
+  return { value: grouped(v, v < 100 ? 1 : 0), unit: distanceUnit(units) };
+}
+
+/** Elevation split for stat cards: { value: '4,850', unit: 'm' }, or '—' when unknown. */
+export function elevationParts(m, units) {
+  if (m === null || m === undefined) return { value: '—', unit: null };
+  return units === 'imperial'
+    ? { value: grouped(m * FEET_PER_METER), unit: 'ft' }
+    : { value: grouped(m), unit: 'm' };
+}
+
+/** "3–5 NOV · 3 DAYS" or "SAT 25 OCT · 10:12": the green caps line above a trip's name. */
+export function tripKicker(firstStartTs, lastEndTs, dayCount) {
+  if (dayCount > 1) {
+    const a = new Date(firstStartTs);
+    const b = new Date(lastEndTs);
+    const month = (d) => d.toLocaleDateString(undefined, { month: 'short' });
+    const range =
+      a.getMonth() === b.getMonth()
+        ? `${a.getDate()}–${b.getDate()} ${month(b)}`
+        : `${a.getDate()} ${month(a)} – ${b.getDate()} ${month(b)}`;
+    return `${range} · ${dayCount} days`.toUpperCase();
+  }
+  return `${formatDayDate(firstStartTs)} · ${formatTime(firstStartTs)}`.toUpperCase();
+}
+
+/** Break reminder setting: 0 -> "Off", 90 -> "Every 1½ hours", 120 -> "Every 2 hours". */
+export function formatBreakReminder(minutes) {
+  if (!minutes) return 'Off';
+  const hours = minutes / 60;
+  const whole = Math.floor(hours);
+  const text = hours === whole ? String(whole) : `${whole}½`;
+  return `Every ${text} ${hours === 1 ? 'hour' : 'hours'}`;
+}

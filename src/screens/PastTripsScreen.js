@@ -1,57 +1,89 @@
-import { Link, useFocusEffect } from 'expo-router';
-import { useCallback, useState } from 'react';
-import { Alert, FlatList, Pressable, StyleSheet, Text, View } from 'react-native';
+import { router, useFocusEffect, useIsFocused } from 'expo-router';
+import { useCallback, useMemo, useState } from 'react';
+import { Alert, FlatList, Text, View } from 'react-native';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
+import RecordingBar from '../components/RecordingBar';
+import TripCard from '../components/TripCard';
+import Button from '../components/ui/Button';
+import Icon from '../components/ui/Icon';
+import SectionHeader from '../components/ui/SectionHeader';
 import { useSettings } from '../context/SettingsContext';
+import { useStyles, useTheme } from '../hooks/useTheme';
 import { ensureDrivePlaces } from '../services/placeService';
 import { deleteTrip, listTrips } from '../storage/tripStorage';
-import { colors, radius, spacing } from '../theme';
-import {
-  formatDate,
-  formatDateRange,
-  formatDistance,
-  formatDurationShort,
-  formatTime,
-} from '../utils/format';
-import { groupIntoDays, summarizeDrives, tripTitle } from '../utils/tripSummary';
+import { radius, spacing, type } from '../theme';
+import { distanceParts, formatDate } from '../utils/format';
+import { computeTotals, tripTitle } from '../utils/tripSummary';
 
-function TripRow({ trip, units, onDelete }) {
-  const first = trip.drives[0];
-  const last = trip.drives.at(-1);
-  const dayCount = groupIntoDays(trip.drives).length;
-  const summary = summarizeDrives(trip.drives);
-  const title = tripTitle(trip);
-  const when =
-    dayCount > 1
-      ? formatDateRange(first.startedAt, last.endedAt)
-      : `${formatDate(first.startedAt)} · ${formatTime(first.startedAt)}`;
+/** "November", or "November 2025" outside the current year. */
+function monthLabel(ts, thisYear) {
+  const d = new Date(ts);
+  return d.toLocaleDateString(undefined, {
+    month: 'long',
+    ...(d.getFullYear() !== thisYear ? { year: 'numeric' } : {}),
+  });
+}
 
+/** List rows: a month header before the first trip of each month (by latest drive). */
+function withMonthHeaders(trips) {
+  const thisYear = new Date().getFullYear();
+  const rows = [];
+  let current = null;
+  for (const trip of trips) {
+    const label = monthLabel(trip.drives.at(-1).startedAt, thisYear);
+    if (label !== current) {
+      rows.push({ key: `month-${label}`, month: label });
+      current = label;
+    }
+    rows.push({ key: `trip-${trip.id}`, trip });
+  }
+  return rows;
+}
+
+/** "2026 · 4 trips · 1,260 km", or all-time totals when nothing was driven this year. */
+function summaryLine(trips, units) {
+  const year = new Date().getFullYear();
+  const thisYear = computeTotals(trips, new Date(year, 0, 1).getTime());
+  const totals = thisYear.tripCount > 0 ? thisYear : computeTotals(trips);
+  const distance = distanceParts(totals.distanceM, units);
+  const count = `${totals.tripCount} ${totals.tripCount === 1 ? 'trip' : 'trips'}`;
+  const prefix = thisYear.tripCount > 0 ? `${year} · ` : 'All time · ';
+  return `${prefix}${count} · ${distance.value} ${distance.unit}`;
+}
+
+/** No trips yet: a short explainer and a Start a trip button. */
+function EmptyTrips() {
+  const { c } = useTheme();
+  const styles = useStyles(makeStyles);
   return (
-    <Link href={`/trips/${trip.id}`} asChild>
-      <Pressable
-        onLongPress={() => onDelete(trip)}
-        style={({ pressed }) => [styles.row, pressed && styles.pressed]}
-      >
-        <View style={styles.rowHeader}>
-          <Text style={styles.title} numberOfLines={1}>
-            {title ?? formatDate(first.startedAt)}
-          </Text>
-          {dayCount > 1 ? <Text style={styles.badge}>{dayCount} days</Text> : null}
-        </View>
-        {/* The date line is redundant when the date is already the title. */}
-        {title ? <Text style={styles.when}>{when}</Text> : null}
-        <Text style={styles.distance}>{formatDistance(summary.distanceM, units)}</Text>
-        <View style={styles.rowFooter}>
-          <Text style={styles.meta}>Elapsed {formatDurationShort(summary.elapsedMs)}</Text>
-          <Text style={styles.meta}>Driving {formatDurationShort(summary.movingTimeMs)}</Text>
-        </View>
-      </Pressable>
-    </Link>
+    <View style={styles.empty}>
+      <View style={styles.emptyTile}>
+        <Icon name="route" size={44} color={c.onAccentContainer} />
+      </View>
+      <Text style={[type.title, styles.emptyTitle]}>No trips yet</Text>
+      <Text style={[type.body, styles.muted, styles.emptyBody]}>
+        Your trips will appear here after your first drive.
+      </Text>
+      <Button
+        variant="tonal"
+        size="small"
+        icon="radio_button_checked"
+        iconFilled
+        label="Start a trip"
+        style={styles.emptyButton}
+        onPress={() => router.navigate({ pathname: '/record', params: { start: 'new' } })}
+      />
+    </View>
   );
 }
 
 export default function PastTripsScreen() {
   const { units } = useSettings();
+  const styles = useStyles(makeStyles);
+  const insets = useSafeAreaInsets();
+  // Only keep the map thumbnails alive while Trips is showing.
+  const focused = useIsFocused();
   const [trips, setTrips] = useState(null);
 
   const load = useCallback(() => {
@@ -85,6 +117,8 @@ export default function PastTripsScreen() {
 
   useFocusEffect(load);
 
+  const rows = useMemo(() => withMonthHeaders(trips ?? []), [trips]);
+
   const confirmDelete = (trip) => {
     const what =
       trip.drives.length === 1 ? 'This trip' : `This trip and its ${trip.drives.length} drives`;
@@ -105,52 +139,62 @@ export default function PastTripsScreen() {
     );
   };
 
+  const header = (
+    <View>
+      <Text style={[type.headline, styles.h1]} role="heading">
+        Trips
+      </Text>
+      {trips?.length ? (
+        <Text style={[type.body, styles.muted, styles.summary]}>{summaryLine(trips, units)}</Text>
+      ) : null}
+      <RecordingBar style={styles.recording} />
+    </View>
+  );
+
   return (
     <FlatList
       style={styles.screen}
-      contentContainerStyle={styles.content}
-      data={trips ?? []}
-      keyExtractor={(t) => String(t.id)}
-      renderItem={({ item }) => <TripRow trip={item} units={units} onDelete={confirmDelete} />}
-      ListEmptyComponent={
-        trips ? (
-          <Text style={styles.empty}>No trips yet. Start one from the dashboard.</Text>
-        ) : null
+      contentContainerStyle={[styles.content, { paddingTop: insets.top + spacing.md }]}
+      data={rows}
+      keyExtractor={(row) => row.key}
+      ListHeaderComponent={header}
+      renderItem={({ item }) =>
+        item.month ? (
+          <SectionHeader variant="label" title={item.month} style={styles.month} />
+        ) : (
+          <TripCard
+            trip={item.trip}
+            units={units}
+            showMap={focused}
+            onLongPress={() => confirmDelete(item.trip)}
+          />
+        )
       }
-      ListFooterComponent={
-        trips?.length ? <Text style={styles.hint}>Long-press a trip to delete it.</Text> : null
-      }
+      ItemSeparatorComponent={() => <View style={styles.separator} />}
+      ListEmptyComponent={trips ? <EmptyTrips /> : null}
     />
   );
 }
 
-const styles = StyleSheet.create({
-  screen: { flex: 1, backgroundColor: colors.background },
-  content: { padding: spacing.md, gap: spacing.sm },
-  row: {
-    backgroundColor: colors.surface,
-    borderRadius: radius.md,
-    padding: spacing.md,
-    borderWidth: StyleSheet.hairlineWidth,
-    borderColor: colors.border,
+const makeStyles = (c) => ({
+  screen: { flex: 1, backgroundColor: c.background },
+  content: { paddingHorizontal: spacing.md, paddingBottom: spacing.xl },
+  h1: { color: c.text, marginHorizontal: 4, marginTop: 8, height: 56, textAlignVertical: 'center' },
+  summary: { marginHorizontal: 4, marginTop: 2 },
+  recording: { marginTop: 20 },
+  month: { marginTop: 20, marginBottom: 4 },
+  separator: { height: spacing.sm },
+  muted: { color: c.textMuted },
+  empty: { alignItems: 'center', paddingTop: 140, paddingHorizontal: 24 },
+  emptyTile: {
+    width: 88,
+    height: 88,
+    borderRadius: radius.card,
+    backgroundColor: c.accentContainer,
+    alignItems: 'center',
+    justifyContent: 'center',
   },
-  pressed: { opacity: 0.75 },
-  rowHeader: { flexDirection: 'row', alignItems: 'center', gap: spacing.sm },
-  title: { flex: 1, color: colors.text, fontSize: 17, fontWeight: '700' },
-  badge: {
-    color: colors.background,
-    backgroundColor: colors.accent,
-    fontSize: 12,
-    fontWeight: '700',
-    paddingHorizontal: spacing.sm,
-    paddingVertical: 2,
-    borderRadius: radius.pill,
-    overflow: 'hidden',
-  },
-  when: { color: colors.textMuted, fontSize: 14, marginTop: 2 },
-  distance: { color: colors.accent, fontSize: 28, fontWeight: '700', marginVertical: spacing.xs },
-  rowFooter: { flexDirection: 'row', gap: spacing.md },
-  meta: { color: colors.textMuted, fontSize: 14 },
-  empty: { color: colors.textMuted, textAlign: 'center', marginTop: spacing.xl, fontSize: 15 },
-  hint: { color: colors.textMuted, textAlign: 'center', fontSize: 12, marginTop: spacing.sm },
+  emptyTitle: { color: c.text, fontSize: 22, marginTop: 24 },
+  emptyBody: { textAlign: 'center', marginTop: 8 },
+  emptyButton: { marginTop: 24, paddingHorizontal: 24 },
 });

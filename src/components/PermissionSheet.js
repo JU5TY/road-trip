@@ -1,7 +1,9 @@
-import { Modal, Platform, Pressable, StyleSheet, Text, View } from 'react-native';
+import { Modal, Platform, Pressable, Text, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
-import { colors, radius, spacing } from '../theme';
+import { useStyles } from '../hooks/useTheme';
+import { radius, spacing, type } from '../theme';
+import Button from './ui/Button';
 
 // What to pick in the system prompt, in each platform's own wording.
 const CHOICE_HINT =
@@ -47,10 +49,16 @@ const CONTENT = {
  */
 export default function PermissionSheet({ kind, onPrimary, onSecondary }) {
   const insets = useSafeAreaInsets();
+  const styles = useStyles(makeStyles);
   const content = kind ? CONTENT[kind] : null;
 
   return (
-    <Modal visible={Boolean(content)} transparent animationType="slide" onRequestClose={onSecondary}>
+    <Modal
+      visible={Boolean(content)}
+      transparent
+      animationType="slide"
+      onRequestClose={onSecondary}
+    >
       <View style={styles.backdrop}>
         {content ? (
           <View style={[styles.sheet, { paddingBottom: spacing.lg + insets.bottom }]}>
@@ -63,13 +71,7 @@ export default function PermissionSheet({ kind, onPrimary, onSecondary }) {
             <View style={styles.hint}>
               <Text style={styles.hintText}>{content.hint}</Text>
             </View>
-            <Pressable
-              onPress={onPrimary}
-              style={({ pressed }) => [styles.primary, pressed && styles.pressed]}
-              accessibilityRole="button"
-            >
-              <Text style={styles.primaryText}>{content.primary}</Text>
-            </Pressable>
+            <Button label={content.primary} onPress={onPrimary} />
             <Pressable onPress={onSecondary} style={styles.secondary} accessibilityRole="button">
               <Text style={styles.secondaryText}>{content.secondary}</Text>
             </Pressable>
@@ -80,35 +82,24 @@ export default function PermissionSheet({ kind, onPrimary, onSecondary }) {
   );
 }
 
-const styles = StyleSheet.create({
-  backdrop: { flex: 1, justifyContent: 'flex-end', backgroundColor: 'rgba(0,0,0,0.55)' },
+const makeStyles = (c) => ({
+  backdrop: { flex: 1, justifyContent: 'flex-end', backgroundColor: c.scrim },
   sheet: {
-    backgroundColor: colors.surface,
-    borderTopLeftRadius: radius.lg,
-    borderTopRightRadius: radius.lg,
+    backgroundColor: c.background,
+    borderTopLeftRadius: radius.card,
+    borderTopRightRadius: radius.card,
     padding: spacing.lg,
     gap: spacing.sm,
   },
-  title: { color: colors.text, fontSize: 22, fontWeight: '700', marginBottom: spacing.xs },
-  body: { color: colors.text, fontSize: 15, lineHeight: 21 },
+  title: { ...type.title, color: c.text, marginBottom: spacing.xs },
+  body: { ...type.body, color: c.text },
   hint: {
-    backgroundColor: colors.surfaceRaised,
-    borderRadius: radius.md,
+    backgroundColor: c.accentContainer,
+    borderRadius: 20,
     padding: spacing.md,
     marginVertical: spacing.sm,
-    borderLeftWidth: 3,
-    borderLeftColor: colors.accent,
   },
-  hintText: { color: colors.text, fontSize: 14, lineHeight: 20 },
-  primary: {
-    height: 52,
-    borderRadius: radius.pill,
-    alignItems: 'center',
-    justifyContent: 'center',
-    backgroundColor: colors.accent,
-  },
-  primaryText: { color: colors.background, fontSize: 17, fontWeight: '700' },
-  secondary: { height: 44, alignItems: 'center', justifyContent: 'center' },
-  secondaryText: { color: colors.textMuted, fontSize: 16, fontWeight: '600' },
-  pressed: { opacity: 0.75 },
+  hintText: { ...type.body, color: c.onAccentContainer },
+  secondary: { height: 48, alignItems: 'center', justifyContent: 'center' },
+  secondaryText: { ...type.button, color: c.accent },
 });

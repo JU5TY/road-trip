@@ -298,6 +298,11 @@ export function liveMetrics(trip, now = Date.now()) {
     currentAltitudeM: stats.currentAltitudeM,
     stintMs:
       isAutoPaused || !hasMoved ? 0 : drivingSinceBreakMs(stats) + rollingMs,
+    // Driving time so far, counting a short stop in progress (as the break timer does).
+    drivingMs:
+      stats.movingTimeMs +
+      (pending && hasMoved ? pending.durationMs : 0) +
+      (isAutoPaused ? 0 : rollingMs),
     isAutoPaused,
     waitingToSetOff,
     hasFix: Boolean(last),

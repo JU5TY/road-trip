@@ -1,10 +1,9 @@
-import { useId, useMemo, useState } from 'react';
-import { StyleSheet, Text, View } from 'react-native';
-import Svg, { Circle, Defs, Line, LinearGradient, Path, Stop } from 'react-native-svg';
+import { useMemo, useState } from 'react';
+import { Text, View } from 'react-native';
+import Svg, { Circle, Line, Path } from 'react-native-svg';
 
-import { colors, spacing } from '../../theme';
-
-const LABEL_W = 48; // left column for y-axis labels
+import { useStyles, useTheme } from '../../hooks/useTheme';
+import { type } from '../../theme';
 
 /** Index of the datum in `data` (sorted by x) nearest to `x`. */
 function nearestIndex(data, x) {
@@ -19,9 +18,21 @@ function nearestIndex(data, x) {
   return lo;
 }
 
+/** Split a series into continuous runs at data flagged `breakBefore` (rest stops). */
+function runsOf(data) {
+  const runs = [];
+  for (const d of data) {
+    if (runs.length === 0 || d.breakBefore) runs.push([]);
+    runs.at(-1).push(d);
+  }
+  return runs.filter((r) => r.length > 1);
+}
+
 /**
- * Line (optionally filled) chart with drag-to-inspect.
- * series:   [{ key, color, data: [{ x, y, ... }] }]  (x ascending; several series share axes)
+ * Filled line chart with drag-to-inspect. The top line shows the y scale (or
+ * the value under the finger); start and end of the x axis sit underneath.
+ * series:   [{ key, color, data: [{ x, y, breakBefore?, ... }] }]  (x ascending)
+ * refLine:  optional { y, label }, drawn dashed (e.g. average speed)
  * formatX / formatY: value → label
  * yFromZero: start the y axis at 0 (speed); otherwise fit to the data
  * minYRange: smallest y span, so flat data doesn't look jagged
@@ -29,22 +40,23 @@ function nearestIndex(data, x) {
  */
 export default function LineChart({
   series,
-  height = 140,
+  height = 110,
   formatX,
   formatY,
-  area = false,
+  refLine,
+  strokeWidth = 3,
   yFromZero = false,
   minYRange = 1,
   onScrub,
 }) {
-  const gradientId = useId().replace(/:/g, '');
+  const { c } = useTheme();
+  const styles = useStyles(makeStyles);
   const [plotW, setPlotW] = useState(0); // drawing width, measured on layout
   const [active, setActive] = useState(null); // { datum, color }
 
-  const all = series.flatMap((s) => s.data);
   const domain = useMemo(() => {
+    const all = series.flatMap((s) => s.data);
     if (all.length === 0) return null;
-    const xs = all.map((d) => d.x);
     const ys = all.map((d) => d.y);
     let yMin = yFromZero ? 0 : Math.min(...ys);
     let yMax = Math.max(...ys);
@@ -53,22 +65,23 @@ export default function LineChart({
       yMin = yFromZero ? 0 : mid - minYRange / 2;
       yMax = yFromZero ? Math.max(yMax, minYRange) : mid + minYRange / 2;
     }
-    const pad = (yMax - yMin) * 0.08;
+    const xs = all.map((d) => d.x);
     return {
       xMin: Math.min(...xs),
       xMax: Math.max(...xs),
-      yMin: yFromZero ? 0 : yMin - pad,
-      yMax: yMax + pad,
+      yMin,
+      yMax,
+      // Headroom so the line's top doesn't touch the edge.
+      yTop: yMax + (yMax - yMin) * 0.06,
     };
-    // `all` is derived from `series`; recompute when the series change.
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [series, yFromZero, minYRange]);
 
   const sx = (x) =>
     domain && domain.xMax > domain.xMin
       ? ((x - domain.xMin) / (domain.xMax - domain.xMin)) * plotW
       : 0;
-  const sy = (y) => (domain ? height - ((y - domain.yMin) / (domain.yMax - domain.yMin)) * height : 0);
+  const sy = (y) =>
+    domain ? height - ((y - domain.yMin) / (domain.yTop - domain.yMin)) * (height - 2) : 0;
 
   // Drag-to-inspect via the plain responder props (they see current values).
   const inspect = (evt) => {
@@ -79,7 +92,8 @@ export default function LineChart({
     for (const one of series) {
       if (one.data.length === 0) continue;
       const d = one.data[nearestIndex(one.data, x)];
-      if (!best || Math.abs(d.x - x) < Math.abs(best.datum.x - x)) best = { datum: d, color: one.color };
+      if (!best || Math.abs(d.x - x) < Math.abs(best.datum.x - x))
+        best = { datum: d, color: one.color };
     }
     setActive(best);
     onScrub?.(best?.datum ?? null);
@@ -101,113 +115,120 @@ export default function LineChart({
 
   if (!domain) return null;
 
-  const paths = series
-    .filter((s) => s.data.length > 1)
-    .map((s) => {
-      const line = s.data
-        .map((d, i) => `${i === 0 ? 'M' : 'L'}${sx(d.x).toFixed(1)},${sy(d.y).toFixed(1)}`)
-        .join(' ');
-      const fill = area
-        ? `${line} L${sx(s.data.at(-1).x).toFixed(1)},${height} L${sx(s.data[0].x).toFixed(1)},${height} Z`
-        : null;
-      return { key: s.key, color: s.color, line, fill };
-    });
-
-  const yTicks = [domain.yMax, (domain.yMax + domain.yMin) / 2, domain.yMin];
-  const xTicks = [domain.xMin, (domain.xMin + domain.xMax) / 2, domain.xMax];
+  const pt = (d) => `${sx(d.x).toFixed(1)},${sy(d.y).toFixed(1)}`;
+  const paths = series.flatMap((s) =>
+    runsOf(s.data).map((run, i) => {
+      const line = run.map((d, j) => `${j === 0 ? 'M' : 'L'}${pt(d)}`).join(' ');
+      const x0 = sx(run[0].x).toFixed(1);
+      const x1 = sx(run.at(-1).x).toFixed(1);
+      return {
+        key: `${s.key}-${i}`,
+        color: s.color,
+        line,
+        fill: `${line} L${x1},${height} L${x0},${height} Z`,
+      };
+    })
+  );
 
   return (
     <View>
-      <Text style={[styles.readout, !active && styles.readoutIdle]} numberOfLines={1}>
-        {active ? `${formatY(active.datum.y)} · ${formatX(active.datum.x)}` : 'Drag across the chart to inspect'}
-      </Text>
-      <View style={styles.row}>
-        <View style={[styles.yLabels, { height }]}>
-          {yTicks.map((y, i) => (
-            <Text key={i} style={styles.axisLabel} numberOfLines={1}>
-              {formatY(y)}
-            </Text>
-          ))}
-        </View>
-        <View
-          style={{ flex: 1, height }}
-          onLayout={(e) => setPlotW(e.nativeEvent.layout.width)}
-          {...responder}
-        >
-          {plotW > 0 ? (
-            <Svg width={plotW} height={height} pointerEvents="none">
-              <Defs>
-                {paths.map((p) => (
-                  <LinearGradient key={p.key} id={`${gradientId}-${p.key}`} x1="0" y1="0" x2="0" y2="1">
-                    <Stop offset="0" stopColor={p.color} stopOpacity="0.45" />
-                    <Stop offset="1" stopColor={p.color} stopOpacity="0.02" />
-                  </LinearGradient>
-                ))}
-              </Defs>
-              {yTicks.map((y, i) => (
-                <Line
-                  key={i}
-                  x1={0}
-                  x2={plotW}
-                  y1={sy(y)}
-                  y2={sy(y)}
-                  stroke={colors.border}
-                  strokeWidth={StyleSheet.hairlineWidth * 2}
-                />
-              ))}
-              {paths.map((p) =>
-                p.fill ? <Path key={`${p.key}-fill`} d={p.fill} fill={`url(#${gradientId}-${p.key})`} /> : null
-              )}
-              {paths.map((p) => (
-                <Path key={p.key} d={p.line} stroke={p.color} strokeWidth={2} fill="none" strokeLinejoin="round" />
-              ))}
-              {active ? (
-                <>
-                  <Line
-                    x1={sx(active.datum.x)}
-                    x2={sx(active.datum.x)}
-                    y1={0}
-                    y2={height}
-                    stroke={colors.text}
-                    strokeWidth={1}
-                    strokeOpacity={0.6}
-                  />
-                  <Circle
-                    cx={sx(active.datum.x)}
-                    cy={sy(active.datum.y)}
-                    r={5}
-                    fill={active.color}
-                    stroke={colors.background}
-                    strokeWidth={2}
-                  />
-                </>
-              ) : null}
+      <View style={styles.top}>
+        <Text style={[type.caps, styles.muted, active && styles.readout]} numberOfLines={1}>
+          {active
+            ? `${formatY(active.datum.y)} · ${formatX(active.datum.x)}`
+            : formatY(domain.yMax)}
+        </Text>
+        {refLine && !active ? (
+          <View style={styles.legend}>
+            <Svg width={16} height={4}>
+              <Line
+                x1={0}
+                x2={16}
+                y1={2}
+                y2={2}
+                stroke={c.textMuted}
+                strokeWidth={1.5}
+                strokeDasharray="4 3"
+              />
             </Svg>
-          ) : null}
-        </View>
+            <Text style={[type.caps, styles.muted]}>{refLine.label}</Text>
+          </View>
+        ) : null}
       </View>
-      <View style={[styles.xLabels, { marginLeft: LABEL_W }]}>
-        {xTicks.map((x, i) => (
-          <Text
-            key={i}
-            style={[styles.axisLabel, i === 1 && styles.center, i === 2 && styles.right]}
-            numberOfLines={1}
-          >
-            {formatX(x)}
-          </Text>
-        ))}
+      <View
+        style={{ height }}
+        onLayout={(e) => setPlotW(e.nativeEvent.layout.width)}
+        {...responder}
+      >
+        {plotW > 0 ? (
+          <Svg width={plotW} height={height} pointerEvents="none">
+            {paths.map((p) => (
+              <Path key={`${p.key}-fill`} d={p.fill} fill={p.color} fillOpacity={0.14} />
+            ))}
+            {paths.map((p) => (
+              <Path
+                key={p.key}
+                d={p.line}
+                stroke={p.color}
+                strokeWidth={strokeWidth}
+                fill="none"
+                strokeLinejoin="round"
+                strokeLinecap="round"
+              />
+            ))}
+            {refLine ? (
+              <Line
+                x1={0}
+                x2={plotW}
+                y1={sy(refLine.y)}
+                y2={sy(refLine.y)}
+                stroke={c.textMuted}
+                strokeWidth={1.5}
+                strokeDasharray="5 4"
+              />
+            ) : null}
+            {active ? (
+              <>
+                <Line
+                  x1={sx(active.datum.x)}
+                  x2={sx(active.datum.x)}
+                  y1={0}
+                  y2={height}
+                  stroke={c.text}
+                  strokeWidth={1}
+                  strokeOpacity={0.5}
+                />
+                <Circle
+                  cx={sx(active.datum.x)}
+                  cy={sy(active.datum.y)}
+                  r={6}
+                  fill={active.color}
+                  stroke={c.surfaceLow}
+                  strokeWidth={2.5}
+                />
+              </>
+            ) : null}
+          </Svg>
+        ) : null}
+      </View>
+      <View style={styles.xLabels}>
+        <Text style={[type.caps, styles.muted]}>{formatX(domain.xMin)}</Text>
+        <Text style={[type.caps, styles.muted]}>{formatX(domain.xMax)}</Text>
       </View>
     </View>
   );
 }
 
-const styles = StyleSheet.create({
-  readout: { color: colors.text, fontSize: 14, fontWeight: '700', marginBottom: spacing.xs },
-  readoutIdle: { color: colors.textMuted, fontWeight: '400', fontSize: 12 },
-  row: { flexDirection: 'row' },
-  yLabels: { width: LABEL_W, justifyContent: 'space-between', paddingRight: spacing.xs },
-  xLabels: { flexDirection: 'row', justifyContent: 'space-between', marginTop: 2 },
-  axisLabel: { color: colors.textMuted, fontSize: 11, flex: 1 },
-  center: { textAlign: 'center' },
-  right: { textAlign: 'right' },
+const makeStyles = (c) => ({
+  top: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    height: 18,
+    marginBottom: 4,
+  },
+  muted: { color: c.textMuted, fontFamily: type.small.fontFamily, letterSpacing: 0 },
+  readout: { color: c.text, fontFamily: type.smallStrong.fontFamily },
+  legend: { flexDirection: 'row', alignItems: 'center', gap: 6 },
+  xLabels: { flexDirection: 'row', justifyContent: 'space-between', marginTop: 6 },
 });

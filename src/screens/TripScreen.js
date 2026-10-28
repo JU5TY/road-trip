@@ -1,29 +1,33 @@
-import { Link, Stack, router, useFocusEffect, useLocalSearchParams } from 'expo-router';
+import { router, useFocusEffect, useLocalSearchParams } from 'expo-router';
 import { useCallback, useMemo, useRef, useState } from 'react';
-import { ActivityIndicator, Alert, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
+import { ActivityIndicator, Alert, Pressable, Text, View } from 'react-native';
 
 import ActionSheet from '../components/ActionSheet';
-import DriveBody, { stopMarkerKey, stopMarkers } from '../components/DriveBody';
+import ChartsCard from '../components/charts/ChartsCard';
+import DetailLayout from '../components/detail/DetailLayout';
+import { routeMarkers, stopMarkerKey } from '../components/detail/mapMarkers';
+import Timeline from '../components/detail/Timeline';
+import { DetailsRows, HeroStats, TitleBlock } from '../components/detail/TripStats';
 import EditTripSheet from '../components/EditTripSheet';
 import MoveDriveSheet from '../components/MoveDriveSheet';
 import RouteMap from '../components/RouteMap';
-import TelemetryCard, { cardStyle } from '../components/TelemetryCard';
-import TimelineCard from '../components/TimelineCard';
-import { TripCharts } from '../components/charts/ChartsCard';
+import Icon from '../components/ui/Icon';
+import SectionHeader from '../components/ui/SectionHeader';
 import { useSettings } from '../context/SettingsContext';
+import { useStyles, useTheme } from '../hooks/useTheme';
 import { ensureDrivePlaces } from '../services/placeService';
 import { getDrivePoints } from '../storage/driveStorage';
 import { deleteTrip, getTrip, updateTrip } from '../storage/tripStorage';
-import { colors, dayColor, radius, spacing } from '../theme';
+import { dayBadgeFor, dayColorFor, type } from '../theme';
 import {
   formatDate,
-  formatDateRange,
   formatDayDate,
   formatDistance,
   formatDurationShort,
   formatTime,
+  tripKicker,
 } from '../utils/format';
-import { downsample } from '../utils/geoMath';
+import { averageMovingSpeed, downsample } from '../utils/geoMath';
 import { buildTripTimeline } from '../utils/timeline';
 import {
   groupIntoDays,
@@ -36,58 +40,63 @@ import {
 // Keep the whole-trip map responsive however many drives it has.
 const MAX_MAP_POINTS = 3000;
 
+/** One day in the Days list. A day with several drives lists each drive under it. */
 function DayRow({ day, units }) {
+  const { c } = useTheme();
+  const styles = useStyles(makeStyles);
   const first = day.drives[0];
   const last = day.drives.at(-1);
   const route = routeLabel({ start: first.places.start, end: last.places.end });
-  const { summary } = day;
+  const [badgeBg, badgeFg] = dayBadgeFor(c, day.number);
   const single = day.drives.length === 1;
+  const meta = `${formatDayDate(day.date)} · ${formatDistance(day.summary.distanceM, units, 0)} · ${formatDurationShort(day.summary.movingTimeMs)}`;
 
-  const header = (
-    <View style={styles.dayHeader}>
-      <View style={[styles.dayDot, { backgroundColor: dayColor(day.number) }]} />
-      <View style={styles.dayText}>
-        <Text style={styles.dayTitle}>
-          Day {day.number} · {formatDayDate(day.date)}
-        </Text>
-        {route ? (
-          <Text style={styles.dayRoute} numberOfLines={1}>
-            {route}
-          </Text>
-        ) : null}
-        <Text style={styles.dayStats}>
-          {formatDistance(summary.distanceM, units)} · {formatDurationShort(summary.movingTimeMs)}{' '}
-          driving · {summary.stopCount} {summary.stopCount === 1 ? 'stop' : 'stops'}
+  const row = (
+    <View style={styles.dayRow}>
+      <View style={[styles.badge, { backgroundColor: badgeBg }]}>
+        <Text style={[type.bodyStrong, { color: badgeFg, fontFamily: type.navActive.fontFamily }]}>
+          {day.number}
         </Text>
       </View>
-      {single ? <Text style={styles.chevron}>›</Text> : null}
+      <View style={styles.flex}>
+        <Text style={[type.bodyLarge, styles.text, styles.medium]} numberOfLines={1}>
+          {route ?? `Day ${day.number}`}
+        </Text>
+        <Text style={[type.small, styles.muted]} numberOfLines={1}>
+          {meta}
+        </Text>
+      </View>
+      {single ? <Icon name="chevron_right" size={24} color={c.textMuted} /> : null}
     </View>
   );
 
   if (single) {
     return (
-      <Link href={`/drives/${first.id}`} asChild>
-        <Pressable style={({ pressed }) => [styles.dayRow, pressed && styles.pressed]}>
-          {header}
-        </Pressable>
-      </Link>
+      <Pressable
+        onPress={() => router.push(`/drives/${first.id}`)}
+        accessibilityRole="link"
+        style={({ pressed }) => pressed && styles.pressed}
+      >
+        {row}
+      </Pressable>
     );
   }
-
-  // Several drives that day: list each one under the day heading.
   return (
-    <View style={styles.dayRow}>
-      {header}
-      {day.drives.map((d) => (
-        <Link key={d.id} href={`/drives/${d.id}`} asChild>
-          <Pressable style={({ pressed }) => [styles.subDrive, pressed && styles.pressed]}>
-            <Text style={styles.subDriveText}>
-              {formatTime(d.startedAt)}–{formatTime(d.endedAt)} ·{' '}
-              {formatDistance(d.stats.distanceM, units)}
-            </Text>
-            <Text style={styles.chevron}>›</Text>
-          </Pressable>
-        </Link>
+    <View>
+      {row}
+      {day.drives.map((d, i) => (
+        <Pressable
+          key={d.id}
+          onPress={() => router.push(`/drives/${d.id}`)}
+          accessibilityRole="link"
+          style={({ pressed }) => [styles.subDrive, pressed && styles.pressed]}
+        >
+          <Text style={[type.body, styles.text, styles.flex]} numberOfLines={1}>
+            Drive {i + 1} · {formatTime(d.startedAt)}–{formatTime(d.endedAt)} ·{' '}
+            {formatDistance(d.stats.distanceM, units)}
+          </Text>
+          <Icon name="chevron_right" size={22} color={c.textMuted} />
+        </Pressable>
       ))}
     </View>
   );
@@ -96,6 +105,8 @@ function DayRow({ day, units }) {
 export default function TripScreen() {
   const { id } = useLocalSearchParams();
   const { units } = useSettings();
+  const { c } = useTheme();
+  const styles = useStyles(makeStyles);
   const [trip, setTrip] = useState(null);
   const [pointsByDrive, setPointsByDrive] = useState(null); // driveId -> points
   const [missing, setMissing] = useState(false);
@@ -126,9 +137,9 @@ export default function TripScreen() {
         setTrip(t);
         setPointsByDrive(new Map(t.drives.map((d, i) => [d.id, all[i]])));
         // Fill in place names that couldn't be looked up when the drive ended.
-        const single = t.drives.length === 1;
+        const oneDay = groupIntoDays(t.drives).length === 1;
         for (const d of t.drives) {
-          const places = await ensureDrivePlaces(d, { includeStops: single });
+          const places = await ensureDrivePlaces(d, { includeStops: oneDay });
           if (cancelled) return;
           setDrivePlaces(d.id, places);
         }
@@ -142,8 +153,13 @@ export default function TripScreen() {
   const days = useMemo(() => (trip ? groupIntoDays(trip.drives) : []), [trip]);
   const summary = useMemo(() => (trip ? summarizeDrives(trip.drives) : null), [trip]);
   const timeline = useMemo(
-    () => (trip && pointsByDrive ? buildTripTimeline(trip, pointsByDrive) : []),
-    [trip, pointsByDrive]
+    () =>
+      trip && pointsByDrive && days.length === 1 ? buildTripTimeline(trip, pointsByDrive) : [],
+    [trip, pointsByDrive, days]
+  );
+  const dayColorOf = useCallback(
+    (n) => (days.length > 1 ? dayColorFor(c, n) : c.accent),
+    [days, c]
   );
 
   const segments = useMemo(() => {
@@ -152,25 +168,34 @@ export default function TripScreen() {
     return days.flatMap((day) =>
       day.drives.map((d) => ({
         key: `drive-${d.id}`,
-        color: dayColor(day.number),
+        color: dayColorOf(day.number),
         coordinates: downsample(pointsByDrive.get(d.id) ?? [], perDrive).map(
           ({ latitude, longitude }) => ({ latitude, longitude })
         ),
       }))
     );
-  }, [trip, pointsByDrive, days]);
+  }, [trip, pointsByDrive, days, dayColorOf]);
 
-  if (missing) {
+  const tracks = useMemo(
+    () =>
+      days.flatMap((day) =>
+        day.drives.map((d) => ({
+          key: `drive-${d.id}`,
+          color: dayColorOf(day.number),
+          points: pointsByDrive?.get(d.id) ?? [],
+        }))
+      ),
+    [days, pointsByDrive, dayColorOf]
+  );
+
+  if (missing || !trip || !pointsByDrive) {
     return (
       <View style={[styles.screen, styles.center]}>
-        <Text style={styles.muted}>This trip no longer exists.</Text>
-      </View>
-    );
-  }
-  if (!trip || !pointsByDrive) {
-    return (
-      <View style={[styles.screen, styles.center]}>
-        <ActivityIndicator color={colors.accent} />
+        {missing ? (
+          <Text style={[type.body, styles.muted]}>This trip no longer exists.</Text>
+        ) : (
+          <ActivityIndicator color={c.accent} />
+        )}
       </View>
     );
   }
@@ -179,14 +204,8 @@ export default function TripScreen() {
   const first = trip.drives[0];
   const last = trip.drives.at(-1);
   const title = tripTitle(trip) ?? formatDate(first.startedAt);
-  // Show the route as a subtitle when the user's own name is the title.
+  // Show the route under the title when the user's own name is the title.
   const subtitle = trip.name ? tripRouteLabel(trip) : null;
-  const dateLine = single
-    ? `${formatDate(first.startedAt)} · ${formatTime(first.startedAt)}`
-    : `${formatDateRange(first.startedAt, last.endedAt)} · ${days.length} days`;
-
-  const firstPoint = segments[0]?.coordinates[0];
-  const lastPoint = segments.at(-1)?.coordinates.at(-1);
 
   const showMap = () => scrollRef.current?.scrollTo({ y: 0, animated: true });
   // Timeline stop items carry their start time; find which drive they belong to.
@@ -199,7 +218,11 @@ export default function TripScreen() {
   const save = async (values) => {
     setMenu(null);
     await updateTrip(trip.id, values);
-    setTrip((prev) => ({ ...prev, name: values.name.trim() || null, notes: values.notes.trim() || null }));
+    setTrip((prev) => ({
+      ...prev,
+      name: values.name.trim() || null,
+      notes: values.notes.trim() || null,
+    }));
   };
 
   const confirmDelete = () => {
@@ -215,26 +238,48 @@ export default function TripScreen() {
     ]);
   };
 
+  const map = (
+    <RouteMap
+      ref={mapRef}
+      flat
+      highlight={highlight}
+      segments={segments}
+      markers={routeMarkers({
+        firstPoint: segments[0]?.coordinates[0],
+        lastPoint: segments.at(-1)?.coordinates.at(-1),
+        startName: first.places.start,
+        endName: last.places.end,
+        drives: trip.drives,
+        c,
+      })}
+    />
+  );
+
   return (
-    <ScrollView ref={scrollRef} style={styles.screen} contentContainerStyle={styles.content}>
-      <Stack.Screen
-        options={{
-          title: single ? 'Trip' : 'Road Trip',
-          headerRight: () => (
-            <Pressable onPress={() => setMenu('options')} hitSlop={12}>
-              <Text style={styles.headerAction}>Options</Text>
-            </Pressable>
-          ),
-        }}
-      />
+    <DetailLayout
+      scrollRef={scrollRef}
+      map={map}
+      actions={[
+        { icon: 'edit', label: 'Edit trip', onPress: () => setMenu('edit') },
+        { icon: 'more_horiz', label: 'More options', onPress: () => setMenu('options') },
+      ]}
+    >
       <ActionSheet
         visible={menu === 'options'}
         title="Trip options"
         actions={[
-          { label: 'Edit name & notes', onPress: () => setMenu('edit') },
+          { icon: 'edit', label: 'Edit name and notes', onPress: () => setMenu('edit') },
           // A lone drive can join an earlier trip (e.g. "Continue" was missed).
-          ...(single ? [{ label: 'Add to another trip', onPress: () => setMenu('move') }] : []),
-          { label: 'Delete trip', style: 'destructive', onPress: confirmDelete },
+          ...(single
+            ? [
+                {
+                  icon: 'drive_file_move',
+                  label: 'Add to another trip',
+                  onPress: () => setMenu('move'),
+                },
+              ]
+            : []),
+          { icon: 'delete', label: 'Delete trip', style: 'destructive', onPress: confirmDelete },
         ]}
         onClose={() => setMenu(null)}
       />
@@ -255,94 +300,65 @@ export default function TripScreen() {
         />
       ) : null}
 
-      <Pressable onPress={() => setMenu('edit')} style={styles.titleBlock}>
-        <Text style={styles.title}>{title}</Text>
-        {subtitle ? <Text style={styles.subtitle}>{subtitle}</Text> : null}
-        <Text style={styles.dateLine}>{dateLine}</Text>
-        {trip.notes ? <Text style={styles.notes}>{trip.notes}</Text> : null}
-      </Pressable>
-
-      {single ? (
-        <DriveBody
-          drive={first}
-          points={pointsByDrive.get(first.id)}
-          units={units}
-          onShowMap={showMap}
-        />
-      ) : (
+      <TitleBlock
+        kicker={tripKicker(first.startedAt, last.endedAt, days.length)}
+        title={title}
+        subtitle={subtitle}
+        notes={trip.notes}
+        onPress={() => setMenu('edit')}
+      />
+      <HeroStats stats={summary} units={units} />
+      {days.length === 1 ? (
+        <Timeline items={timeline} color={c.accent} units={units} onStopPress={showTripStop} />
+      ) : null}
+      <DetailsRows stats={summary} elapsedMs={summary.elapsedMs} units={units} />
+      <ChartsCard
+        tracks={tracks}
+        units={units}
+        avgSpeedMps={averageMovingSpeed(summary)}
+        onScrub={setHighlight}
+      />
+      {days.length > 1 ? (
         <>
-          <RouteMap
-            ref={mapRef}
-            highlight={highlight}
-            segments={segments}
-            markers={[
-              ...(firstPoint
-                ? [{ key: 'start', coordinate: firstPoint, title: first.places.start || 'Start', color: colors.start }]
-                : []),
-              ...(lastPoint
-                ? [{ key: 'end', coordinate: lastPoint, title: last.places.end || 'Finish', color: colors.stop }]
-                : []),
-              ...trip.drives.flatMap(stopMarkers),
-            ]}
-          />
-          <TripCharts
-            days={days}
-            pointsByDrive={pointsByDrive}
-            units={units}
-            onScrub={setHighlight}
-          />
-          <TelemetryCard
-            title="Trip Totals"
-            stats={summary}
-            elapsedMs={summary.elapsedMs}
-            units={units}
-          />
-          <TimelineCard items={timeline} units={units} onStopPress={showTripStop} />
-          <View style={styles.daysCard}>
-            <Text style={styles.cardTitle}>Days</Text>
-            {days.map((day) => (
-              <DayRow key={day.number} day={day} units={units} />
-            ))}
-          </View>
+          <SectionHeader title="Days" style={styles.daysHeader} />
+          {days.map((day) => (
+            <DayRow key={day.number} day={day} units={units} />
+          ))}
         </>
-      )}
-    </ScrollView>
+      ) : null}
+    </DetailLayout>
   );
 }
 
-const styles = StyleSheet.create({
-  screen: { flex: 1, backgroundColor: colors.background },
-  content: { padding: spacing.md, gap: spacing.md },
+const makeStyles = (c) => ({
+  screen: { flex: 1, backgroundColor: c.background },
   center: { alignItems: 'center', justifyContent: 'center' },
-  muted: { color: colors.textMuted, fontSize: 15 },
-  headerAction: { color: colors.accent, fontSize: 16, fontWeight: '600' },
-  titleBlock: { gap: 2 },
-  title: { color: colors.text, fontSize: 24, fontWeight: '800' },
-  subtitle: { color: colors.text, fontSize: 16, fontWeight: '600' },
-  dateLine: { color: colors.textMuted, fontSize: 14, marginTop: 2 },
-  notes: { color: colors.text, fontSize: 15, lineHeight: 21, marginTop: spacing.sm },
-  daysCard: { ...cardStyle, gap: spacing.sm },
-  cardTitle: { color: colors.text, fontSize: 18, fontWeight: '700' },
+  daysHeader: { marginBottom: 4 },
   dayRow: {
-    backgroundColor: colors.surfaceRaised,
-    borderRadius: radius.md,
-    padding: spacing.md,
-    gap: spacing.sm,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 16,
+    paddingVertical: 12,
+    paddingHorizontal: 4,
   },
-  dayHeader: { flexDirection: 'row', alignItems: 'center', gap: spacing.md },
-  dayDot: { width: 12, height: 12, borderRadius: 6 },
-  dayText: { flex: 1, gap: 2 },
-  dayTitle: { color: colors.text, fontSize: 16, fontWeight: '700' },
-  dayRoute: { color: colors.text, fontSize: 14 },
-  dayStats: { color: colors.textMuted, fontSize: 13 },
-  chevron: { color: colors.textMuted, fontSize: 24, fontWeight: '300' },
+  badge: {
+    width: 44,
+    height: 44,
+    borderRadius: 14,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  flex: { flex: 1, minWidth: 0 },
+  text: { color: c.text },
+  medium: { fontFamily: type.statUnit.fontFamily },
+  muted: { color: c.textMuted },
   subDrive: {
     flexDirection: 'row',
     alignItems: 'center',
-    justifyContent: 'space-between',
-    marginLeft: 28,
-    paddingVertical: spacing.xs,
+    gap: 8,
+    minHeight: 44,
+    marginLeft: 64,
+    paddingRight: 4,
   },
-  subDriveText: { color: colors.text, fontSize: 14 },
-  pressed: { opacity: 0.75 },
+  pressed: { opacity: 0.6 },
 });

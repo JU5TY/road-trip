@@ -42,3 +42,6 @@ yarn-error.*
 
 # local env (Google Maps key)
 .env
+
+# Personal Claude Code settings
+.claude/settings.local.json

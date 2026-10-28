@@ -1,187 +1,146 @@
 import { useMemo, useState } from 'react';
-import { Pressable, StyleSheet, Text, View } from 'react-native';
+import { Pressable, Text, View } from 'react-native';
 
-import { colors, dayColor, radius, spacing } from '../../theme';
-import { elevationSeries, speedBands, speedSeries } from '../../utils/chartData';
-import {
-  distanceUnit,
-  formatElevation,
-  formatTime,
-  speedUnit,
-  toDistance,
-  toSpeed,
-} from '../../utils/format';
+import { useStyles } from '../../hooks/useTheme';
+import { radius, type } from '../../theme';
+import { elevationSeries, speedByDistanceSeries } from '../../utils/chartData';
+import { distanceUnit, formatElevation, speedUnit, toDistance, toSpeed } from '../../utils/format';
 import { haversineDistance } from '../../utils/geoMath';
-import { cardStyle } from '../TelemetryCard';
-import DayDistanceBars from './DayDistanceBars';
+import SectionHeader from '../ui/SectionHeader';
 import LineChart from './LineChart';
-import SpeedBandsBar from './SpeedBandsBar';
 
 const MIN_ELEVATION_RANGE_M = 40; // keep near-flat drives from looking mountainous
 const MIN_SPEED_RANGE_MPS = 50 / 3.6;
-const TRIP_ELEVATION_POINTS = 400;
+const TOTAL_POINTS = 400; // across all tracks, so long trips stay quick to draw
 
-function Section({ title, children }) {
-  return (
-    <View style={styles.section}>
-      <Text style={styles.sectionTitle}>{title}</Text>
-      {children}
-    </View>
-  );
-}
-
-/** Speed bands only mean something once there's time spent moving (walks don't count). */
-const hasMovingTime = (bands) => bands.some((b) => b.ms > 0);
-
-const distanceFormatter = (units) => (m) => `${toDistance(m, units).toFixed(0)} ${distanceUnit(units)}`;
-const speedFormatter = (units) => (mps) => `${Math.round(toSpeed(mps, units))} ${speedUnit(units)}`;
+const OPTIONS = [
+  ['elevation', 'Elevation'],
+  ['speed', 'Speed'],
+];
 
 /**
- * Charts for one drive: a single chart with an Elevation | Speed toggle (so it
- * fits under the map while dragging), then the speed bands.
+ * "Charts" section: one chart with an Elevation | Speed switch, both against
+ * distance from the start. `tracks` are the drives in order, each in its day's
+ * colour: [{ key, color, points }]. `avgSpeedMps` draws the dashed Avg line.
  */
-export function DriveCharts({ points, units, onScrub }) {
-  const elevation = useMemo(() => elevationSeries(points), [points]);
-  const speed = useMemo(() => speedSeries(points), [points]);
-  const bands = useMemo(() => speedBands([points], units), [points, units]);
-  const hasElevation = elevation.length > 1;
-  const [choice, setChoice] = useState('elevation'); // 'elevation' | 'speed'
-  if (speed.length < 2) return null;
+export default function ChartsCard({ tracks, units, avgSpeedMps, onScrub }) {
+  const styles = useStyles(makeStyles);
+  const [choice, setChoice] = useState('elevation');
 
+  const { elevation, speed } = useMemo(() => {
+    const perTrack = Math.max(60, Math.floor(TOTAL_POINTS / Math.max(1, tracks.length)));
+    let offsetM = 0;
+    const elev = [];
+    const spd = [];
+    for (const t of tracks) {
+      elev.push({
+        key: t.key,
+        color: t.color,
+        data: elevationSeries(t.points, { offsetM, maxPoints: perTrack }),
+      });
+      spd.push({
+        key: t.key,
+        color: t.color,
+        data: speedByDistanceSeries(t.points, { offsetM, maxPoints: perTrack }),
+      });
+      for (let i = 1; i < t.points.length; i++)
+        offsetM += haversineDistance(t.points[i - 1], t.points[i]);
+    }
+    return { elevation: elev, speed: spd };
+  }, [tracks]);
+
+  const hasElevation = elevation.some((s) => s.data.length > 1);
+  const hasSpeed = speed.some((s) => s.data.length > 1);
+  if (!hasSpeed) return null;
   const showing = hasElevation ? choice : 'speed';
+
   const select = (next) => {
     onScrub?.(null);
     setChoice(next);
   };
+  const formatX = (m) => `${Math.round(toDistance(m, units))} ${distanceUnit(units)}`;
+  const formatSpeed = (mps) => `${Math.round(toSpeed(mps, units))} ${speedUnit(units)}`;
 
   return (
-    <View style={styles.card}>
+    <View>
       <View style={styles.header}>
-        <Text style={styles.cardTitle}>Charts</Text>
+        <SectionHeader title="Charts" style={styles.title} />
         {hasElevation ? (
-          <View style={styles.toggle}>
-            {[
-              ['elevation', 'Elevation'],
-              ['speed', 'Speed'],
-            ].map(([value, label]) => (
-              <Pressable
-                key={value}
-                onPress={() => select(value)}
-                style={[styles.toggleItem, showing === value && styles.toggleItemOn]}
-                accessibilityRole="button"
-                accessibilityState={{ selected: showing === value }}
-              >
-                <Text style={[styles.toggleText, showing === value && styles.toggleTextOn]}>
-                  {label}
-                </Text>
-              </Pressable>
-            ))}
+          <View style={styles.switch} role="radiogroup">
+            {OPTIONS.map(([value, label]) => {
+              const on = showing === value;
+              return (
+                <Pressable
+                  key={value}
+                  onPress={() => select(value)}
+                  style={[styles.option, on && styles.optionOn]}
+                  accessibilityRole="radio"
+                  accessibilityState={{ checked: on }}
+                >
+                  <Text style={[type.label, on ? styles.optionTextOn : styles.optionText]}>
+                    {label}
+                  </Text>
+                </Pressable>
+              );
+            })}
           </View>
         ) : null}
       </View>
-      {showing === 'elevation' ? (
-        <LineChart
-          key="elevation"
-          series={[{ key: 'elevation', color: colors.accent, data: elevation }]}
-          area
-          minYRange={MIN_ELEVATION_RANGE_M}
-          formatX={distanceFormatter(units)}
-          formatY={(m) => formatElevation(m, units)}
-          onScrub={onScrub}
-        />
-      ) : (
-        <LineChart
-          key="speed"
-          series={[{ key: 'speed', color: colors.link, data: speed }]}
-          yFromZero
-          minYRange={MIN_SPEED_RANGE_MPS}
-          formatX={formatTime}
-          formatY={speedFormatter(units)}
-          onScrub={onScrub}
-        />
-      )}
-      {hasMovingTime(bands) ? (
-        <Section title="Time by speed">
-          <SpeedBandsBar bands={bands} />
-        </Section>
-      ) : null}
-    </View>
-  );
-}
-
-/**
- * Whole-trip charts: elevation across all drives (coloured by day), distance
- * per day, and speed bands. `days` comes from groupIntoDays().
- */
-export function TripCharts({ days, pointsByDrive, units, onScrub }) {
-  const drives = useMemo(() => days.flatMap((d) => d.drives), [days]);
-
-  const elevation = useMemo(() => {
-    const perDrive = Math.max(60, Math.floor(TRIP_ELEVATION_POINTS / drives.length));
-    let offsetM = 0;
-    const series = [];
-    for (const day of days) {
-      for (const drive of day.drives) {
-        const points = pointsByDrive.get(drive.id) ?? [];
-        series.push({
-          key: `drive-${drive.id}`,
-          color: dayColor(day.number),
-          data: elevationSeries(points, { offsetM, maxPoints: perDrive }),
-        });
-        for (let i = 1; i < points.length; i++) offsetM += haversineDistance(points[i - 1], points[i]);
-      }
-    }
-    return series;
-  }, [days, drives, pointsByDrive]);
-
-  const bands = useMemo(
-    () => speedBands(drives.map((d) => pointsByDrive.get(d.id) ?? []), units),
-    [drives, pointsByDrive, units]
-  );
-  const hasElevation = elevation.some((s) => s.data.length > 1);
-
-  return (
-    <View style={styles.card}>
-      <Text style={styles.cardTitle}>Charts</Text>
-      {hasElevation ? (
-        <Section title="Elevation">
+      <View style={styles.card}>
+        {showing === 'elevation' ? (
           <LineChart
+            key="elevation"
             series={elevation}
-            area
             minYRange={MIN_ELEVATION_RANGE_M}
-            formatX={distanceFormatter(units)}
+            formatX={formatX}
             formatY={(m) => formatElevation(m, units)}
             onScrub={onScrub}
           />
-        </Section>
-      ) : null}
-      <Section title="Distance per day">
-        <DayDistanceBars days={days} units={units} />
-      </Section>
-      {hasMovingTime(bands) ? (
-        <Section title="Time by speed">
-          <SpeedBandsBar bands={bands} />
-        </Section>
-      ) : null}
+        ) : (
+          <LineChart
+            key="speed"
+            series={speed}
+            strokeWidth={2.5}
+            yFromZero
+            minYRange={MIN_SPEED_RANGE_MPS}
+            refLine={
+              avgSpeedMps > 0 ? { y: avgSpeedMps, label: `Avg ${formatSpeed(avgSpeedMps)}` } : null
+            }
+            formatX={formatX}
+            formatY={formatSpeed}
+            onScrub={onScrub}
+          />
+        )}
+      </View>
     </View>
   );
 }
 
-const styles = StyleSheet.create({
-  card: { ...cardStyle, gap: spacing.lg },
-  cardTitle: { color: colors.text, fontSize: 18, fontWeight: '700' },
-  header: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: -spacing.sm },
-  toggle: { flexDirection: 'row', backgroundColor: colors.surfaceRaised, borderRadius: radius.pill, padding: 3 },
-  toggleItem: { paddingHorizontal: spacing.md, paddingVertical: 6, borderRadius: radius.pill },
-  toggleItemOn: { backgroundColor: colors.accent },
-  toggleText: { color: colors.textMuted, fontSize: 13, fontWeight: '700' },
-  toggleTextOn: { color: colors.background },
-  section: { gap: spacing.xs },
-  sectionTitle: {
-    color: colors.textMuted,
-    fontSize: 12,
-    fontWeight: '700',
-    letterSpacing: 1,
-    textTransform: 'uppercase',
+const makeStyles = (c) => ({
+  header: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    marginTop: 28,
+    marginBottom: 12,
+  },
+  title: { marginTop: 0, marginBottom: 0 },
+  switch: {
+    flexDirection: 'row',
+    gap: 4,
+    backgroundColor: c.surface,
+    borderRadius: 20,
+    padding: 4,
+  },
+  option: { height: 32, paddingHorizontal: 14, borderRadius: 16, justifyContent: 'center' },
+  optionOn: { backgroundColor: c.accent },
+  optionText: { color: c.textMuted },
+  optionTextOn: { color: c.onAccent },
+  card: {
+    backgroundColor: c.surfaceLow,
+    borderRadius: radius.card,
+    paddingHorizontal: 16,
+    paddingTop: 16,
+    paddingBottom: 14,
   },
 });

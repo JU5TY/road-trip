@@ -55,3 +55,22 @@ export const formatDate = (ts) =>
 
 export const formatTime = (ts) =>
   new Date(ts).toLocaleTimeString(undefined, { hour: 'numeric', minute: '2-digit' });
+
+/** "Mon 3 Nov 2026", "3–6 Nov 2026", or "28 Oct – 2 Nov 2026" for a span of days. */
+export function formatDateRange(startTs, endTs) {
+  const a = new Date(startTs);
+  const b = new Date(endTs);
+  if (a.toDateString() === b.toDateString()) return formatDate(startTs);
+  const day = (d) => d.getDate();
+  const month = (d) => d.toLocaleDateString(undefined, { month: 'short' });
+  const year = b.getFullYear();
+  if (a.getFullYear() !== year) {
+    return `${day(a)} ${month(a)} ${a.getFullYear()} – ${day(b)} ${month(b)} ${year}`;
+  }
+  if (a.getMonth() === b.getMonth()) return `${day(a)}–${day(b)} ${month(b)} ${year}`;
+  return `${day(a)} ${month(a)} – ${day(b)} ${month(b)} ${year}`;
+}
+
+/** "Mon 3 Nov", without the year, for day headings inside a trip. */
+export const formatDayDate = (ts) =>
+  new Date(ts).toLocaleDateString(undefined, { weekday: 'short', day: 'numeric', month: 'short' });

@@ -1,0 +1,100 @@
+// Shared SQLite connection and schema migrations (expo-sqlite).
+// Used from both React screens and the background location task, so it must
+// not depend on React context.
+//
+// Schema (current):
+//   trips  (id, name, notes, created_at)                  a journey, e.g. "Scotland 2026"
+//   drives (id, trip_id, started_at, ended_at, status,    one START→STOP recording
+//           stats, places)
+//   points (id, drive_id, latitude, longitude, altitude,  raw GPS fixes of a drive
+//           speed, accuracy, timestamp)
+import * as SQLite from 'expo-sqlite';
+
+// The original (version 0) schema. Later versions are reached via MIGRATIONS.
+const BASE_SCHEMA = `
+  CREATE TABLE IF NOT EXISTS trips (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    started_at INTEGER NOT NULL,
+    ended_at INTEGER,
+    status TEXT NOT NULL DEFAULT 'active',
+    stats TEXT NOT NULL
+  );
+  CREATE TABLE IF NOT EXISTS points (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    trip_id INTEGER NOT NULL REFERENCES trips(id) ON DELETE CASCADE,
+    latitude REAL NOT NULL,
+    longitude REAL NOT NULL,
+    altitude REAL,
+    speed REAL,
+    accuracy REAL,
+    timestamp INTEGER NOT NULL
+  );
+  CREATE INDEX IF NOT EXISTS idx_points_trip_time ON points (trip_id, timestamp);
+`;
+
+// Applied in order; MIGRATIONS[n] takes PRAGMA user_version from n to n + 1.
+// Never edit or reorder an entry once it has shipped, only append.
+const MIGRATIONS = [
+  // 1: place names for start, end and rest stops (JSON).
+  'ALTER TABLE trips ADD COLUMN places TEXT;',
+  // 2: multi-day trips. Each existing recording becomes a drive inside its own trip
+  // (same id, so nothing else needs remapping).
+  // points is rebuilt rather than renamed so its foreign key points at drives
+  // (RENAME TABLE only rewrites references on some SQLite builds).
+  `
+    ALTER TABLE trips RENAME TO drives;
+    CREATE TABLE points_new (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      drive_id INTEGER NOT NULL REFERENCES drives(id) ON DELETE CASCADE,
+      latitude REAL NOT NULL,
+      longitude REAL NOT NULL,
+      altitude REAL,
+      speed REAL,
+      accuracy REAL,
+      timestamp INTEGER NOT NULL
+    );
+    INSERT INTO points_new (id, drive_id, latitude, longitude, altitude, speed, accuracy, timestamp)
+      SELECT id, trip_id, latitude, longitude, altitude, speed, accuracy, timestamp FROM points;
+    DROP TABLE points;
+    ALTER TABLE points_new RENAME TO points;
+    CREATE INDEX idx_points_drive_time ON points (drive_id, timestamp);
+    CREATE TABLE trips (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      name TEXT,
+      notes TEXT,
+      created_at INTEGER NOT NULL
+    );
+    ALTER TABLE drives ADD COLUMN trip_id INTEGER REFERENCES trips(id);
+    INSERT INTO trips (id, created_at) SELECT id, started_at FROM drives;
+    UPDATE drives SET trip_id = id;
+    CREATE INDEX idx_drives_trip ON drives (trip_id, started_at);
+  `,
+];
+
+async function migrate(db) {
+  const { user_version: version } = await db.getFirstAsync('PRAGMA user_version');
+  if (version === 0) await db.execAsync(BASE_SCHEMA);
+  for (let v = version; v < MIGRATIONS.length; v++) {
+    await db.withTransactionAsync(() =>
+      db.execAsync(`${MIGRATIONS[v]} PRAGMA user_version = ${v + 1};`)
+    );
+  }
+}
+
+let dbPromise = null;
+
+export function getDb() {
+  if (!dbPromise) {
+    dbPromise = (async () => {
+      const db = await SQLite.openDatabaseAsync('roadtrip.db');
+      await db.execAsync('PRAGMA journal_mode = WAL;');
+      await migrate(db);
+      return db;
+    })();
+    // Let a failed open be retried on the next call.
+    dbPromise.catch(() => {
+      dbPromise = null;
+    });
+  }
+  return dbPromise;
+}

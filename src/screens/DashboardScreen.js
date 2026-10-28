@@ -3,16 +3,18 @@ import { useCallback, useEffect, useState } from 'react';
 import { ActivityIndicator, Alert, Linking, Pressable, StyleSheet, Text, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
+import ActionSheet from '../components/ActionSheet';
 import PermissionSheet from '../components/PermissionSheet';
 import { useSettings } from '../context/SettingsContext';
 import {
   getLocationAccess,
   requestLocationAccess,
-  resumeActiveTrip,
-  startTrip,
-  stopTrip,
+  resumeActiveDrive,
+  startDrive,
+  stopDrive,
 } from '../services/locationService';
-import { getActiveTrip } from '../storage/tripStorage';
+import { getActiveDrive } from '../storage/driveStorage';
+import { getContinuableTrip, getTrip } from '../storage/tripStorage';
 import { colors, radius, spacing } from '../theme';
 import {
   distanceUnit,
@@ -23,9 +25,12 @@ import {
   toSpeed,
 } from '../utils/format';
 import { liveMetrics } from '../utils/geoMath';
+import { dayNumberFor, tripTitle } from '../utils/tripSummary';
 
 const GOOGLE_MAPS_NAV_URL = 'https://www.google.com/maps/dir/?api=1&travelmode=driving';
 const REFRESH_MS = 1000;
+// Offer "Continue" when the last drive ended within this long.
+const CONTINUE_WINDOW_MS = 3 * 24 * 60 * 60 * 1000;
 
 function Metric({ label, value, unit, large }) {
   return (
@@ -41,15 +46,18 @@ function Metric({ label, value, unit, large }) {
 
 export default function DashboardScreen() {
   const { units } = useSettings();
-  const [trip, setTrip] = useState(null);
-  const [now, setNow] = useState(Date.now());
+  const [drive, setDrive] = useState(null); // the active drive, if recording
+  // { driveId, text }, e.g. "Scotland 2026 · Day 2" for the active drive.
+  const [tripLabelFor, setTripLabelFor] = useState(null);
+  const [now, setNow] = useState(() => Date.now());
   const [busy, setBusy] = useState(false);
   const [foregroundOnly, setForegroundOnly] = useState(false);
   const [sheet, setSheet] = useState(null); // PermissionSheet kind, or null
+  const [continueOffer, setContinueOffer] = useState(null); // { trip, dayNumber }
 
-  // Restart tracking if the app was killed mid-trip.
+  // Restart tracking if the app was killed mid-drive.
   useEffect(() => {
-    resumeActiveTrip()
+    resumeActiveDrive()
       .then((res) => res && setForegroundOnly(!res.background))
       .catch((err) => console.warn('[dashboard] resume failed', err));
   }, []);
@@ -59,9 +67,9 @@ export default function DashboardScreen() {
     useCallback(() => {
       let cancelled = false;
       const tick = async () => {
-        const active = await getActiveTrip();
+        const active = await getActiveDrive();
         if (!cancelled) {
-          setTrip(active);
+          setDrive(active);
           setNow(Date.now());
         }
       };
@@ -74,6 +82,25 @@ export default function DashboardScreen() {
     }, [])
   );
 
+  // Which trip and day the active drive belongs to.
+  const activeId = drive?.id;
+  const activeTripId = drive?.tripId;
+  const activeStartedAt = drive?.startedAt;
+  useEffect(() => {
+    if (!activeId) return;
+    let cancelled = false;
+    getTrip(activeTripId)
+      .then((trip) => {
+        if (cancelled || !trip) return;
+        const day = dayNumberFor(trip.drives, activeStartedAt);
+        setTripLabelFor({ driveId: activeId, text: `${tripTitle(trip) ?? 'New trip'} · Day ${day}` });
+      })
+      .catch((err) => console.warn('[dashboard] trip label failed', err));
+    return () => {
+      cancelled = true;
+    };
+  }, [activeId, activeTripId, activeStartedAt]);
+
   const run = async (action) => {
     setBusy(true);
     try {
@@ -85,18 +112,25 @@ export default function DashboardScreen() {
     }
   };
 
-  const beginTrip = () =>
+  const beginDrive = (tripId = null) =>
     run(async () => {
-      const res = await startTrip();
-      setTrip(res.trip);
+      const res = await startDrive({ tripId });
+      setDrive(res.drive);
       setForegroundOnly(!res.background);
     });
 
+  /** Offer to continue a recent trip, otherwise start a new one. */
+  const chooseTripAndStart = async () => {
+    const recent = await getContinuableTrip(CONTINUE_WINDOW_MS).catch(() => null);
+    if (!recent) return beginDrive(null);
+    setContinueOffer({ trip: recent, dayNumber: dayNumberFor(recent.drives, Date.now()) });
+  };
+
   const onToggle = async () => {
-    if (trip) {
+    if (drive) {
       return run(async () => {
-        await stopTrip();
-        setTrip(null);
+        await stopDrive();
+        setDrive(null);
         setForegroundOnly(false);
       });
     }
@@ -104,7 +138,7 @@ export default function DashboardScreen() {
     const access = await getLocationAccess();
     if (!access.granted) return setSheet(access.canAskAgain ? 'ask' : 'blocked');
     if (!access.precise) return setSheet('approximate');
-    return beginTrip();
+    return chooseTripAndStart();
   };
 
   const onSheetPrimary = async () => {
@@ -121,13 +155,18 @@ export default function DashboardScreen() {
       return;
     }
     if (!access.precise) return setSheet('approximate');
-    return beginTrip();
+    return chooseTripAndStart();
   };
 
   const onSheetSecondary = () => {
     const kind = sheet;
     setSheet(null);
-    if (kind === 'approximate') beginTrip();
+    if (kind === 'approximate') chooseTripAndStart();
+  };
+
+  const startFromOffer = (tripId) => {
+    setContinueOffer(null);
+    beginDrive(tripId);
   };
 
   const openGoogleMaps = () =>
@@ -135,24 +174,53 @@ export default function DashboardScreen() {
       Alert.alert('Google Maps', 'Could not open Google Maps.')
     );
 
-  const live = trip ? liveMetrics(trip, now) : null;
-  const active = Boolean(trip);
+  const tripLabel = tripLabelFor && tripLabelFor.driveId === activeId ? tripLabelFor.text : null;
+  const live = drive ? liveMetrics(drive, now) : null;
+  const active = Boolean(drive);
+  const offerTitle = continueOffer
+    ? (tripTitle(continueOffer.trip) ?? 'your last trip')
+    : null;
 
   return (
     <SafeAreaView style={styles.screen} edges={['bottom']}>
       <PermissionSheet kind={sheet} onPrimary={onSheetPrimary} onSecondary={onSheetSecondary} />
+      <ActionSheet
+        visible={Boolean(continueOffer)}
+        title="Start recording"
+        actions={
+          continueOffer
+            ? [
+                {
+                  label: `Continue “${offerTitle}”`,
+                  detail: `Day ${continueOffer.dayNumber}`,
+                  style: 'primary',
+                  onPress: () => startFromOffer(continueOffer.trip.id),
+                },
+                { label: 'Start a new trip', onPress: () => startFromOffer(null) },
+              ]
+            : []
+        }
+        onClose={() => setContinueOffer(null)}
+      />
       <View style={styles.status}>
         <View style={[styles.dot, { backgroundColor: active ? colors.start : colors.textMuted }]} />
         <Text style={styles.statusText}>
           {!active
             ? 'Ready'
-            : live.isAutoPaused
-              ? 'Auto-paused · rest stop'
-              : live.hasFix
-                ? 'Recording'
-                : 'Waiting for GPS…'}
+            : !live.hasFix
+              ? 'Waiting for GPS…'
+              : live.waitingToSetOff
+                ? 'Recording · waiting to set off'
+                : live.isAutoPaused
+                  ? 'Auto-paused · rest stop'
+                  : 'Recording'}
         </Text>
       </View>
+      {tripLabel ? (
+        <Text style={styles.tripLabel} numberOfLines={1}>
+          {tripLabel}
+        </Text>
+      ) : null}
 
       {foregroundOnly && active ? (
         <Text style={styles.warning}>
@@ -220,6 +288,7 @@ const styles = StyleSheet.create({
   status: { flexDirection: 'row', alignItems: 'center', gap: spacing.sm, marginBottom: spacing.xs },
   dot: { width: 10, height: 10, borderRadius: 5 },
   statusText: { color: colors.textMuted, fontSize: 15, fontWeight: '600' },
+  tripLabel: { color: colors.text, fontSize: 17, fontWeight: '700', marginBottom: spacing.xs },
   warning: {
     color: colors.accent,
     fontSize: 13,

@@ -10,13 +10,28 @@ src/
     _layout.js            imports locationService first so the background task is defined at launch
     index.js              → DashboardScreen
     trips/index.js        → PastTripsScreen
-    trips/[id].js         → TripDetailScreen
-  screens/                Dashboard, Past Trips, Trip Detail
-  services/locationService.js   LOCATION_TRACKING_TASK, start/stop/resume
-  storage/tripStorage.js        expo-sqlite: trips + points tables
-  utils/geoMath.js              Haversine, moving time, rest stops, speed, elevation (pure functions)
+    trips/[id].js         → TripScreen (a single-drive trip shows the drive inline)
+    drives/[id].js        → DriveScreen
+    settings.js           → SettingsScreen
+  screens/                Dashboard, Past Trips, Trip, Drive, Settings
+  components/             RouteMap, TelemetryCard, RestStopsCard, DriveBody, sheets
+  services/locationService.js   LOCATION_TRACKING_TASK, start/stop/resume a drive
+  services/placeService.js      reverse-geocoded place names per drive
+  storage/db.js                 SQLite connection + schema migrations
+  storage/tripStorage.js        trips (name, notes) and listing
+  storage/driveStorage.js       drives (one START→STOP recording) and their GPS points
+  utils/geoMath.js              per-drive metrics engine (pure functions)
+  utils/tripSummary.js          combining drives into trips and days (pure functions)
   utils/format.js               display formatting
 ```
+
+## Trips, drives and days
+
+- A **drive** is one START → STOP recording. A **trip** contains one or more drives.
+- On START, if the last drive ended within 3 days, the app offers **Continue "<trip>"** or **Start a new trip**.
+- **Days** aren't stored: drives are grouped by the local date they started. Only driving days are numbered (Day 1, 2, 3).
+- Trip totals add up distance, driving time, climbing and stops, and take the maximum top speed, altitude and longest stint. Overall average speed uses time on the road only, so overnight breaks are excluded.
+- Trip options: edit name and notes, delete, or (for a single drive) add it to another trip. Drive options: move to another trip or a new one, delete.
 
 ## How the metrics work
 

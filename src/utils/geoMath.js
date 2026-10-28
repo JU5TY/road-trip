@@ -9,7 +9,7 @@ const EARTH_RADIUS_M = 6371008.8;
 // traffic jams, which keep creeping forward out of the radius.
 export const STOP_RADIUS_M = 100;
 export const STOP_MIN_DURATION_MS = 5 * 60 * 1000;
-const STOP_SPEED_MPS = 5 / 3.6; // used only to classify long GPS gaps
+const STOP_SPEED_MPS = 5 / 3.6; // "stationary" for long GPS gaps and the live break timer
 
 // Top speed must be held at least this long to count.
 const TOP_SPEED_SUSTAIN_MS = 3000;
@@ -104,11 +104,14 @@ function closeDwell(stats, endedAt) {
   const dwell = stats.dwell;
   const next = { ...stats, dwell: null };
   if (!dwell) return next;
+  // Sitting still before setting off is neither driving nor a rest stop.
+  if (stats.distanceM === 0) {
+    const pulledAway = dwell.durationMs < STOP_MIN_DURATION_MS;
+    return pulledAway ? { ...next, distanceM: dwellDistance(dwell) } : next;
+  }
   if (dwell.durationMs < STOP_MIN_DURATION_MS) {
     return addDriving(next, dwell.durationMs, dwellDistance(dwell));
   }
-  // Idle time before the car has moved at all is not a rest stop.
-  if (stats.distanceM === 0) return next;
   return {
     ...next,
     stopCount: stats.stopCount + 1,
@@ -260,8 +263,9 @@ export function averageOverallSpeed(trip) {
 
 /** Driving time since the last rest stop, including a short dwell still in progress. */
 export function drivingSinceBreakMs(stats) {
-  const pending = stats.dwell && stats.dwell.durationMs < STOP_MIN_DURATION_MS ? stats.dwell.durationMs : 0;
-  return (stats.currentStintMs ?? 0) + pending;
+  // Before the car first moves, nothing counts as driving yet.
+  const counts = stats.dwell && stats.distanceM > 0 && stats.dwell.durationMs < STOP_MIN_DURATION_MS;
+  return (stats.currentStintMs ?? 0) + (counts ? stats.dwell.durationMs : 0);
 }
 
 /** Live view of an in-progress trip, evaluated at `now`. */
@@ -269,18 +273,33 @@ export function liveMetrics(trip, now = Date.now()) {
   const { stats, startedAt } = trip;
   const last = stats.lastFix;
   const fresh = last && now - last.timestamp < STALE_FIX_MS;
-  // iOS sends no fixes while parked, so time since the last fix counts as dwelling.
-  const dwellMs = (stats.dwell?.durationMs ?? 0) + (last ? now - last.timestamp : 0);
-  const isAutoPaused = Boolean(last) && dwellMs >= STOP_MIN_DURATION_MS;
+  // Phones send no fixes while stationary, so time since the last fix counts as dwelling.
+  const sinceLastFix = last ? Math.max(0, now - last.timestamp) : 0;
+  const dwellMs = (stats.dwell?.durationMs ?? 0) + sinceLastFix;
+  const longDwell = Boolean(last) && dwellMs >= STOP_MIN_DURATION_MS;
+  // The break timer ticks between fixes while rolling, and holds while stationary
+  // (a short stop is added when the car moves off; a long one resets it to 0).
+  const hasMoved = stats.distanceM > 0;
+  const rollingNow = fresh && (last.speed ?? 0) >= STOP_SPEED_MPS;
+  // Distance is only credited after leaving the starting spot, so also treat
+  // "currently rolling" as set off.
+  const waitingToSetOff = Boolean(last) && !hasMoved && !rollingNow;
+  // Idle before setting off is not a rest stop.
+  const isAutoPaused = longDwell && hasMoved;
+  // Capped rather than dropped when fixes stop (tunnels), so it never steps backwards.
+  const rollingMs =
+    last && (last.speed ?? 0) >= STOP_SPEED_MPS ? Math.min(sinceLastFix, STALE_FIX_MS) : 0;
   // Include the not-yet-classified dwell so the numbers don't lag behind.
-  const pending = stats.dwell && !isAutoPaused ? stats.dwell : null;
+  const pending = stats.dwell && !longDwell ? stats.dwell : null;
   return {
     currentSpeedMps: fresh ? last.speed ?? 0 : 0,
     distanceM: stats.distanceM + (pending ? dwellDistance(pending) : 0),
     elapsedMs: now - startedAt,
     currentAltitudeM: stats.currentAltitudeM,
-    stintMs: isAutoPaused ? 0 : drivingSinceBreakMs(stats),
+    stintMs:
+      isAutoPaused || !hasMoved ? 0 : drivingSinceBreakMs(stats) + rollingMs,
     isAutoPaused,
+    waitingToSetOff,
     hasFix: Boolean(last),
   };
 }

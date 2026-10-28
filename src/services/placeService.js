@@ -1,13 +1,13 @@
 // Human-readable place names ("Manchester → Edinburgh", "Tebay Services") via the
-// phone's reverse geocoder. Looked up after a trip ends and cached on the trip;
-// lookups that fail (offline) are retried the next time the trip is viewed.
+// phone's reverse geocoder. Looked up after a drive ends and cached on the drive;
+// lookups that fail (offline) are retried the next time the drive is viewed.
 import * as Location from 'expo-location';
 
-import { getTripEndpoints, saveTripPlaces } from '../storage/tripStorage';
+import { getDriveEndpoints, saveDrivePlaces } from '../storage/driveStorage';
 
-const inFlight = new Map(); // tripId -> Promise<places>
+const inFlight = new Map(); // driveId -> Promise<places>
 
-/** Town-level name for a trip's start or end. */
+/** Town-level name for a drive's start or end. */
 function townName(addr) {
   return addr.city || addr.district || addr.subregion || addr.region || addr.name || null;
 }
@@ -38,12 +38,12 @@ async function lookup(coord, toName) {
   }
 }
 
-async function resolvePlaces(trip, { includeStops }) {
-  const places = { ...trip.places, stops: [...(trip.places.stops ?? [])] };
+async function resolvePlaces(drive, { includeStops }) {
+  const places = { ...drive.places, stops: [...(drive.places.stops ?? [])] };
   let changed = false;
 
   if (places.start === undefined || places.end === undefined) {
-    const ends = await getTripEndpoints(trip.id);
+    const ends = await getDriveEndpoints(drive.id);
     if (!ends) return places;
     if (places.start === undefined) places.start = await lookup(ends.first, townName);
     if (places.end === undefined) places.end = await lookup(ends.last, townName);
@@ -52,7 +52,7 @@ async function resolvePlaces(trip, { includeStops }) {
 
   if (includeStops) {
     // Sequential on purpose: the OS geocoders rate-limit bursts.
-    for (const [i, stop] of trip.stats.stops.entries()) {
+    for (const [i, stop] of drive.stats.stops.entries()) {
       // JSON turns undefined array slots into null, so null also means "retry".
       if (places.stops[i] == null) {
         const name = await lookup(stop, stopName);
@@ -65,27 +65,19 @@ async function resolvePlaces(trip, { includeStops }) {
   }
 
   // JSON drops undefined values, so failed lookups are retried next time.
-  if (changed) await saveTripPlaces(trip.id, places);
+  if (changed) await saveDrivePlaces(drive.id, places);
   return places;
 }
 
 /**
- * Make sure a completed trip has place names, looking up any that are missing.
- * Resolves to the trip's places: { start, end, stops: [] }.
+ * Make sure a completed drive has place names, looking up any that are missing.
+ * Resolves to the drive's places: { start, end, stops: [] }.
  */
-export function ensureTripPlaces(trip, { includeStops = false } = {}) {
-  const key = `${trip.id}:${includeStops}`;
+export function ensureDrivePlaces(drive, { includeStops = false } = {}) {
+  const key = `${drive.id}:${includeStops}`;
   if (!inFlight.has(key)) {
-    const job = resolvePlaces(trip, { includeStops }).finally(() => inFlight.delete(key));
+    const job = resolvePlaces(drive, { includeStops }).finally(() => inFlight.delete(key));
     inFlight.set(key, job);
   }
   return inFlight.get(key);
-}
-
-/** "Manchester → Edinburgh", "Manchester" for a round trip, or null if unknown. */
-export function routeLabel(places) {
-  const { start, end } = places ?? {};
-  if (!start && !end) return null;
-  if (start && end && start !== end) return `${start} → ${end}`;
-  return start || end;
 }

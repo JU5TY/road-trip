@@ -8,15 +8,19 @@ import { Platform } from 'react-native';
 
 import {
   appendFixes,
-  completeTrip,
-  createTrip,
-  getActiveTrip,
-  getTrip,
-} from '../storage/tripStorage';
+  completeDrive,
+  createDrive,
+  getActiveDrive,
+  getDrive,
+} from '../storage/driveStorage';
 import { applyFixes, finalizeStats, isUsableFix, toFix } from '../utils/geoMath';
-import { ensureTripPlaces } from './placeService';
+import { ensureDrivePlaces } from './placeService';
 
 export const LOCATION_TRACKING_TASK = 'LOCATION_TRACKING_TASK';
+
+// Android often delivers its last known (possibly minutes-old) location first;
+// anything from before the drive started is ignored.
+const STALE_FIX_TOLERANCE_MS = 10 * 1000;
 
 const TRACKING_OPTIONS = {
   accuracy: Location.Accuracy.BestForNavigation,
@@ -52,12 +56,14 @@ function enqueue(job) {
 
 function handleLocations(locations) {
   return enqueue(async () => {
-    const trip = await getActiveTrip();
-    if (!trip) return;
-    const fixes = locations.map(toFix).filter(isUsableFix);
+    const drive = await getActiveDrive();
+    if (!drive) return;
+    const fixes = locations
+      .map(toFix)
+      .filter((f) => isUsableFix(f) && f.timestamp >= drive.startedAt - STALE_FIX_TOLERANCE_MS);
     if (fixes.length === 0) return;
-    const stats = applyFixes(trip.stats, fixes);
-    await appendFixes(trip.id, fixes, stats);
+    const stats = applyFixes(drive.stats, fixes);
+    await appendFixes(drive.id, fixes, stats);
   });
 }
 
@@ -137,41 +143,42 @@ async function stopUpdates() {
 }
 
 /**
- * Start a new trip and begin recording. Location permission must already be
- * granted (see the dashboard's permission sheet). Returns { trip, background }.
+ * Start recording a drive, as part of trip `tripId` or of a new trip when it is
+ * null. Location permission must already be granted (see the dashboard's
+ * permission sheet). Returns { drive, background }.
  */
-export async function startTrip() {
-  const existing = await getActiveTrip();
-  // Start updates before creating the trip so a failure leaves no empty trip behind.
+export async function startDrive({ tripId = null } = {}) {
+  const existing = await getActiveDrive();
+  // Start updates before creating the drive so a failure leaves no empty drive behind.
   const { background } = await startUpdates();
-  const trip = existing ?? (await createTrip());
-  return { trip, background };
+  const drive = existing ?? (await createDrive({ tripId }));
+  return { drive, background };
 }
 
-/** Stop recording and close out the active trip. Returns the completed trip id. */
-export async function stopTrip() {
+/** Stop recording and close out the active drive. Returns the completed drive id. */
+export async function stopDrive() {
   await stopUpdates();
   // Wait for any in-flight batch so the final stats include it.
   return enqueue(async () => {
-    const trip = await getActiveTrip();
-    if (!trip) return null;
+    const drive = await getActiveDrive();
+    if (!drive) return null;
     const endedAt = Date.now();
-    await completeTrip(trip.id, endedAt, finalizeStats(trip.stats));
+    await completeDrive(drive.id, endedAt, finalizeStats(drive.stats));
     // Look up place names now while we're likely online; failures retry later.
-    getTrip(trip.id)
-      .then((completed) => ensureTripPlaces(completed, { includeStops: true }))
+    getDrive(drive.id)
+      .then((completed) => ensureDrivePlaces(completed, { includeStops: true }))
       .catch((err) => console.warn('[locationService] place lookup failed', err));
-    return trip.id;
+    return drive.id;
   });
 }
 
 /**
- * Call on launch: if a trip was left active (app killed, phone rebooted),
+ * Call on launch: if a drive was left active (app killed, phone rebooted),
  * make sure location updates are running again. Returns { background } or null.
  */
-export async function resumeActiveTrip() {
-  const trip = await getActiveTrip();
-  // Never prompt on launch; if access was revoked the dashboard still shows the trip.
-  if (!trip || !(await getLocationAccess()).granted) return null;
+export async function resumeActiveDrive() {
+  const drive = await getActiveDrive();
+  // Never prompt on launch; if access was revoked the dashboard still shows the drive.
+  if (!drive || !(await getLocationAccess()).granted) return null;
   return startUpdates();
 }

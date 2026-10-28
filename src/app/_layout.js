@@ -34,6 +34,7 @@ export default function RootLayout() {
         />
         <Stack.Screen name="trips/index" options={{ title: 'Past Trips' }} />
         <Stack.Screen name="trips/[id]" options={{ title: 'Trip' }} />
+        <Stack.Screen name="drives/[id]" options={{ title: 'Drive' }} />
         <Stack.Screen name="settings" options={{ title: 'Settings' }} />
       </Stack>
     </SettingsProvider>

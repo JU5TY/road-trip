@@ -41,13 +41,16 @@ import {
 const MAX_MAP_POINTS = 3000;
 
 /** One day in the Days list. A day with several drives lists each drive under it. */
-function DayRow({ day, units }) {
+function DayRow({ day, units, multiDay }) {
   const { c } = useTheme();
   const styles = useStyles(makeStyles);
   const first = day.drives[0];
   const last = day.drives.at(-1);
   const route = routeLabel({ start: first.places.start, end: last.places.end });
-  const [badgeBg, badgeFg] = dayBadgeFor(c, day.number);
+  // A one-day trip's route is drawn in the accent colour, so its badge matches that.
+  const [badgeBg, badgeFg] = multiDay
+    ? dayBadgeFor(c, day.number)
+    : [c.accentContainer, c.onAccentContainer];
   const single = day.drives.length === 1;
   const meta = `${formatDayDate(day.date)} · ${formatDistance(day.summary.distanceM, units, 0)} · ${formatDurationShort(day.summary.movingTimeMs)}`;
 
@@ -318,14 +321,10 @@ export default function TripScreen() {
         avgSpeedMps={averageMovingSpeed(summary)}
         onScrub={setHighlight}
       />
-      {days.length > 1 ? (
-        <>
-          <SectionHeader title="Days" style={styles.daysHeader} />
-          {days.map((day) => (
-            <DayRow key={day.number} day={day} units={units} />
-          ))}
-        </>
-      ) : null}
+      <SectionHeader title="Days" style={styles.daysHeader} />
+      {days.map((day) => (
+        <DayRow key={day.number} day={day} units={units} multiDay={days.length > 1} />
+      ))}
     </DetailLayout>
   );
 }

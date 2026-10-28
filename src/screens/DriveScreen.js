@@ -1,5 +1,5 @@
 import { Stack, router, useLocalSearchParams } from 'expo-router';
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { ActivityIndicator, Alert, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 
 import ActionSheet from '../components/ActionSheet';
@@ -21,6 +21,7 @@ export default function DriveScreen() {
   const [points, setPoints] = useState(null);
   const [trip, setTrip] = useState(null);
   const [menu, setMenu] = useState(null); // null | 'options' | 'move'
+  const scrollRef = useRef(null);
 
   useEffect(() => {
     let cancelled = false;
@@ -66,7 +67,7 @@ export default function DriveScreen() {
   };
 
   return (
-    <ScrollView style={styles.screen} contentContainerStyle={styles.content}>
+    <ScrollView ref={scrollRef} style={styles.screen} contentContainerStyle={styles.content}>
       <Stack.Screen
         options={{
           title,
@@ -101,7 +102,12 @@ export default function DriveScreen() {
         ) : null}
       </View>
 
-      <DriveBody drive={drive} points={points} units={units} />
+      <DriveBody
+        drive={drive}
+        points={points}
+        units={units}
+        onShowMap={() => scrollRef.current?.scrollTo({ y: 0, animated: true })}
+      />
     </ScrollView>
   );
 }

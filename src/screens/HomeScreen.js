@@ -9,8 +9,6 @@ import { colors, radius, spacing } from '../theme';
 import { formatDistance, formatDurationShort, formatElevation } from '../utils/format';
 import { computeTotals, dayNumberFor, isContinuable } from '../utils/tripSummary';
 
-const RECENT_COUNT = 3;
-
 const startOfYear = (now) => new Date(new Date(now).getFullYear(), 0, 1).getTime();
 
 function Totals({ trips, units, now }) {
@@ -122,13 +120,21 @@ export default function HomeScreen() {
     );
   }
 
-  const [latest, ...rest] = trips;
-  const recent = rest.slice(0, RECENT_COUNT);
+  const latest = trips[0];
 
   return (
     <ScrollView style={styles.screen} contentContainerStyle={styles.content}>
       <View style={styles.section}>
-        <Text style={styles.sectionTitle}>Latest trip</Text>
+        <View style={styles.sectionHeader}>
+          <Text style={styles.sectionTitle}>Latest trip</Text>
+          {trips.length > 1 ? (
+            <Link href="/trips" asChild>
+              <Pressable hitSlop={12}>
+                <Text style={styles.link}>See all {trips.length}</Text>
+              </Pressable>
+            </Link>
+          ) : null}
+        </View>
         <TripCard
           trip={latest}
           units={units}
@@ -139,22 +145,6 @@ export default function HomeScreen() {
       </View>
 
       <Totals trips={trips} units={units} now={now} />
-
-      {recent.length > 0 ? (
-        <View style={styles.section}>
-          <View style={styles.sectionHeader}>
-            <Text style={styles.sectionTitle}>Recent trips</Text>
-            <Link href="/trips" asChild>
-              <Pressable hitSlop={12}>
-                <Text style={styles.link}>See all</Text>
-              </Pressable>
-            </Link>
-          </View>
-          {recent.map((trip) => (
-            <TripCard key={trip.id} trip={trip} units={units} showMap={focused} />
-          ))}
-        </View>
-      ) : null}
     </ScrollView>
   );
 }

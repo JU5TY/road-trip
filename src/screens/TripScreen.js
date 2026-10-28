@@ -1,13 +1,14 @@
 import { Link, Stack, router, useFocusEffect, useLocalSearchParams } from 'expo-router';
-import { useCallback, useMemo, useState } from 'react';
+import { useCallback, useMemo, useRef, useState } from 'react';
 import { ActivityIndicator, Alert, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 
 import ActionSheet from '../components/ActionSheet';
-import DriveBody from '../components/DriveBody';
+import DriveBody, { stopMarkerKey, stopMarkers } from '../components/DriveBody';
 import EditTripSheet from '../components/EditTripSheet';
 import MoveDriveSheet from '../components/MoveDriveSheet';
 import RouteMap from '../components/RouteMap';
 import TelemetryCard, { cardStyle } from '../components/TelemetryCard';
+import TimelineCard from '../components/TimelineCard';
 import { useSettings } from '../context/SettingsContext';
 import { ensureDrivePlaces } from '../services/placeService';
 import { getDrivePoints } from '../storage/driveStorage';
@@ -22,6 +23,7 @@ import {
   formatTime,
 } from '../utils/format';
 import { downsample } from '../utils/geoMath';
+import { buildTripTimeline } from '../utils/timeline';
 import {
   groupIntoDays,
   routeLabel,
@@ -97,6 +99,8 @@ export default function TripScreen() {
   const [pointsByDrive, setPointsByDrive] = useState(null); // driveId -> points
   const [missing, setMissing] = useState(false);
   const [menu, setMenu] = useState(null); // null | 'options' | 'edit' | 'move'
+  const scrollRef = useRef(null);
+  const mapRef = useRef(null);
 
   const setDrivePlaces = (driveId, places) =>
     setTrip((prev) => ({
@@ -135,6 +139,10 @@ export default function TripScreen() {
 
   const days = useMemo(() => (trip ? groupIntoDays(trip.drives) : []), [trip]);
   const summary = useMemo(() => (trip ? summarizeDrives(trip.drives) : null), [trip]);
+  const timeline = useMemo(
+    () => (trip && pointsByDrive ? buildTripTimeline(trip, pointsByDrive) : []),
+    [trip, pointsByDrive]
+  );
 
   const segments = useMemo(() => {
     if (!trip || !pointsByDrive) return [];
@@ -178,6 +186,14 @@ export default function TripScreen() {
   const firstPoint = segments[0]?.coordinates[0];
   const lastPoint = segments.at(-1)?.coordinates.at(-1);
 
+  const showMap = () => scrollRef.current?.scrollTo({ y: 0, animated: true });
+  // Timeline stop items carry their start time; find which drive they belong to.
+  const showTripStop = (item) => {
+    const drive = trip.drives.find((d) => d.stats.stops.some((s) => s.startedAt === item.time));
+    showMap();
+    if (drive) mapRef.current?.focusMarker(stopMarkerKey(drive.id, item.time));
+  };
+
   const save = async (values) => {
     setMenu(null);
     await updateTrip(trip.id, values);
@@ -198,7 +214,7 @@ export default function TripScreen() {
   };
 
   return (
-    <ScrollView style={styles.screen} contentContainerStyle={styles.content}>
+    <ScrollView ref={scrollRef} style={styles.screen} contentContainerStyle={styles.content}>
       <Stack.Screen
         options={{
           title: single ? 'Trip' : 'Road Trip',
@@ -245,10 +261,16 @@ export default function TripScreen() {
       </Pressable>
 
       {single ? (
-        <DriveBody drive={first} points={pointsByDrive.get(first.id)} units={units} />
+        <DriveBody
+          drive={first}
+          points={pointsByDrive.get(first.id)}
+          units={units}
+          onShowMap={showMap}
+        />
       ) : (
         <>
           <RouteMap
+            ref={mapRef}
             segments={segments}
             markers={[
               ...(firstPoint
@@ -257,6 +279,7 @@ export default function TripScreen() {
               ...(lastPoint
                 ? [{ key: 'end', coordinate: lastPoint, title: last.places.end || 'Finish', color: colors.stop }]
                 : []),
+              ...trip.drives.flatMap(stopMarkers),
             ]}
           />
           <TelemetryCard
@@ -265,6 +288,7 @@ export default function TripScreen() {
             elapsedMs={summary.elapsedMs}
             units={units}
           />
+          <TimelineCard items={timeline} units={units} onStopPress={showTripStop} />
           <View style={styles.daysCard}>
             <Text style={styles.cardTitle}>Days</Text>
             {days.map((day) => (

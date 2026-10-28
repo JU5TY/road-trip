@@ -10,7 +10,7 @@ src/
     _layout.js            root stack; imports locationService first so the background task is
                           defined at launch, and resumes an interrupted drive
     (tabs)/_layout.js     bottom tabs + "● Recording" strip above the tab bar
-    (tabs)/index.js       → HomeScreen (latest trip, totals, recent trips with map previews)
+    (tabs)/index.js       → HomeScreen (latest trip with map preview, totals)
     (tabs)/record.js      → RecordScreen (START/STOP, live metrics, Google Maps button)
     (tabs)/trips.js       → PastTripsScreen
     (tabs)/settings.js    → SettingsScreen

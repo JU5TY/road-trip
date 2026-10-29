@@ -29,6 +29,8 @@ const light = {
   mapLand: '#EEF2EC',
   mapWater: '#C9DDF2',
   mapRoad: '#FFFFFF',
+  progressTrack: '#E3E5E8',
+  outlinedRow: '#FFFFFF', // not-yet Iconic Road rows
   floating: '#FFFFFF', // round buttons over the map
   toolbar: '#E6EBE9', // floating action toolbar
   navBar: '#F1F3F4',
@@ -71,6 +73,8 @@ const dark = {
   mapLand: '#1C2226',
   mapWater: '#1E3348',
   mapRoad: '#2C343A',
+  progressTrack: '#2E3337',
+  outlinedRow: '#191C1F',
   floating: '#2A2F31',
   toolbar: '#2A2F31',
   navBar: '#1A1D1F',

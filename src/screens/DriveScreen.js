@@ -7,6 +7,7 @@ import ChartsCard from '../components/charts/ChartsCard';
 import DetailLayout from '../components/detail/DetailLayout';
 import { routeMarkers, stopMarkerKey } from '../components/detail/mapMarkers';
 import Timeline from '../components/detail/Timeline';
+import IconicRoadsSection from '../components/roads/IconicRoadsSection';
 import { DetailsRows, HeroStats, TitleBlock } from '../components/detail/TripStats';
 import MoveDriveSheet from '../components/MoveDriveSheet';
 import RouteMap from '../components/RouteMap';
@@ -14,10 +15,12 @@ import { useSettings } from '../context/SettingsContext';
 import { useStyles, useTheme } from '../hooks/useTheme';
 import { ensureDrivePlaces } from '../services/placeService';
 import { deleteDrive, getDrive, getDrivePoints } from '../storage/driveStorage';
+import { getDriveCompletions } from '../storage/roadStorage';
 import { getTrip } from '../storage/tripStorage';
 import { dayColorFor } from '../theme';
 import { formatDate, formatDayDate, formatTime } from '../utils/format';
 import { averageMovingSpeed, downsample } from '../utils/geoMath';
+import { getRoad } from '../utils/iconicRoads';
 import { buildDriveTimeline } from '../utils/timeline';
 import {
   dayNumberFor,
@@ -30,12 +33,13 @@ import {
 /** One drive (a single START→STOP recording) inside a trip: the "Day" page. */
 export default function DriveScreen() {
   const { id } = useLocalSearchParams();
-  const { units } = useSettings();
+  const { units, showIconicRoads } = useSettings();
   const { c } = useTheme();
   const styles = useStyles(makeStyles);
   const [drive, setDrive] = useState(null);
   const [points, setPoints] = useState(null);
   const [trip, setTrip] = useState(null);
+  const [completions, setCompletions] = useState([]); // Iconic Roads on this drive
   const [menu, setMenu] = useState(null); // null | 'options' | 'move'
   const [highlight, setHighlight] = useState(null); // point under the finger on a chart
   const scrollRef = useRef(null);
@@ -46,11 +50,16 @@ export default function DriveScreen() {
     (async () => {
       const d = await getDrive(Number(id));
       if (cancelled || !d) return;
-      const [p, t] = await Promise.all([getDrivePoints(d.id), getTrip(d.tripId)]);
+      const [p, t, roads] = await Promise.all([
+        getDrivePoints(d.id),
+        getTrip(d.tripId),
+        getDriveCompletions(d.id),
+      ]);
       if (cancelled) return;
       setDrive(d);
       setPoints(p);
       setTrip(t);
+      setCompletions(roads);
       const places = await ensureDrivePlaces(d, { includeStops: true });
       if (!cancelled) setDrive((prev) => ({ ...prev, places }));
     })().catch((err) => console.warn('[drive] load failed', err));
@@ -84,8 +93,14 @@ export default function DriveScreen() {
   const kicker = (
     multiDay
       ? `Day ${dayNumber} · ${formatDayDate(drive.startedAt)}`
-      : `${formatDayDate(drive.startedAt)} · ${formatTime(drive.startedAt)}`
+      : drive.stats.timesHidden
+        ? formatDayDate(drive.startedAt)
+        : `${formatDayDate(drive.startedAt)} · ${formatTime(drive.startedAt)}`
   ).toUpperCase();
+
+  // A drive that is just an Iconic Road (starts and ends at its gates) shows no times.
+  const hideTimes = Boolean(drive.stats.timesHidden);
+  const roadsShown = showIconicRoads ? completions : [];
 
   const showStop = (item) => {
     scrollRef.current?.scrollTo({ y: 0, animated: true });
@@ -153,14 +168,36 @@ export default function DriveScreen() {
         title={routeLabel(drive.places) ?? formatDate(drive.startedAt)}
         subtitle={tripTitle(trip)}
       />
-      <HeroStats stats={drive.stats} units={units} />
-      <Timeline items={timeline} color={color} units={units} onStopPress={showStop} />
-      <DetailsRows stats={drive.stats} elapsedMs={driveElapsedMs(drive)} units={units} />
+      <HeroStats
+        stats={drive.stats}
+        units={units}
+        timesHidden={hideTimes}
+        roadCount={new Set(roadsShown.map((r) => r.roadId)).size}
+      />
+      <IconicRoadsSection completions={roadsShown} />
+      <Timeline
+        items={timeline}
+        color={color}
+        units={units}
+        onStopPress={showStop}
+        roads={roadsShown.map((r) => ({
+          name: getRoad(r.roadId)?.name,
+          completedAt: r.completedAt,
+        }))}
+        hideTimes={hideTimes}
+      />
+      <DetailsRows
+        stats={drive.stats}
+        elapsedMs={driveElapsedMs(drive)}
+        units={units}
+        timesHidden={hideTimes}
+      />
       <ChartsCard
         tracks={[{ key: 'route', color, points }]}
         units={units}
         avgSpeedMps={averageMovingSpeed(drive.stats)}
         onScrub={setHighlight}
+        speedHidden={hideTimes}
       />
     </DetailLayout>
   );

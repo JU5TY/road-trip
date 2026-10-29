@@ -7,6 +7,7 @@ import ChartsCard from '../components/charts/ChartsCard';
 import DetailLayout from '../components/detail/DetailLayout';
 import { routeMarkers, stopMarkerKey } from '../components/detail/mapMarkers';
 import Timeline from '../components/detail/Timeline';
+import IconicRoadsSection from '../components/roads/IconicRoadsSection';
 import { DetailsRows, HeroStats, TitleBlock } from '../components/detail/TripStats';
 import EditTripSheet from '../components/EditTripSheet';
 import MoveDriveSheet from '../components/MoveDriveSheet';
@@ -17,6 +18,7 @@ import { useSettings } from '../context/SettingsContext';
 import { useStyles, useTheme } from '../hooks/useTheme';
 import { ensureDrivePlaces } from '../services/placeService';
 import { getDrivePoints } from '../storage/driveStorage';
+import { getTripCompletions } from '../storage/roadStorage';
 import { deleteTrip, getTrip, updateTrip } from '../storage/tripStorage';
 import { dayBadgeFor, dayColorFor, type } from '../theme';
 import {
@@ -28,6 +30,7 @@ import {
   tripKicker,
 } from '../utils/format';
 import { averageMovingSpeed, downsample } from '../utils/geoMath';
+import { getRoad } from '../utils/iconicRoads';
 import { buildTripTimeline } from '../utils/timeline';
 import {
   groupIntoDays,
@@ -42,6 +45,8 @@ const MAX_MAP_POINTS = 3000;
 
 /** One day in the Days list. A day with several drives lists each drive under it. */
 function DayRow({ day, units, multiDay }) {
+  // A day with a drive whose times are hidden (it's just an Iconic Road) shows no times.
+  const hideTimes = day.drives.some((d) => d.stats.timesHidden);
   const { c } = useTheme();
   const styles = useStyles(makeStyles);
   const first = day.drives[0];
@@ -52,7 +57,11 @@ function DayRow({ day, units, multiDay }) {
     ? dayBadgeFor(c, day.number)
     : [c.accentContainer, c.onAccentContainer];
   const single = day.drives.length === 1;
-  const meta = `${formatDayDate(day.date)} · ${formatDistance(day.summary.distanceM, units, 0)} · ${formatDurationShort(day.summary.movingTimeMs)}`;
+  const meta = [
+    formatDayDate(day.date),
+    formatDistance(day.summary.distanceM, units, 0),
+    ...(hideTimes ? [] : [formatDurationShort(day.summary.movingTimeMs)]),
+  ].join(' · ');
 
   const row = (
     <View style={styles.dayRow}>
@@ -95,8 +104,9 @@ function DayRow({ day, units, multiDay }) {
           style={({ pressed }) => [styles.subDrive, pressed && styles.pressed]}
         >
           <Text style={[type.body, styles.text, styles.flex]} numberOfLines={1}>
-            Drive {i + 1} · {formatTime(d.startedAt)}–{formatTime(d.endedAt)} ·{' '}
-            {formatDistance(d.stats.distanceM, units)}
+            {d.stats.timesHidden
+              ? `Drive ${i + 1} · ${formatDistance(d.stats.distanceM, units)}`
+              : `Drive ${i + 1} · ${formatTime(d.startedAt)}–${formatTime(d.endedAt)} · ${formatDistance(d.stats.distanceM, units)}`}
           </Text>
           <Icon name="chevron_right" size={22} color={c.textMuted} />
         </Pressable>
@@ -107,10 +117,11 @@ function DayRow({ day, units, multiDay }) {
 
 export default function TripScreen() {
   const { id } = useLocalSearchParams();
-  const { units } = useSettings();
+  const { units, showIconicRoads } = useSettings();
   const { c } = useTheme();
   const styles = useStyles(makeStyles);
   const [trip, setTrip] = useState(null);
+  const [completions, setCompletions] = useState([]); // Iconic Roads on this trip
   const [pointsByDrive, setPointsByDrive] = useState(null); // driveId -> points
   const [missing, setMissing] = useState(false);
   const [menu, setMenu] = useState(null); // null | 'options' | 'edit' | 'move'
@@ -135,9 +146,13 @@ export default function TripScreen() {
           setMissing(true);
           return;
         }
-        const all = await Promise.all(t.drives.map((d) => getDrivePoints(d.id)));
+        const [all, roads] = await Promise.all([
+          Promise.all(t.drives.map((d) => getDrivePoints(d.id))),
+          getTripCompletions(t.id),
+        ]);
         if (cancelled) return;
         setTrip(t);
+        setCompletions(roads);
         setPointsByDrive(new Map(t.drives.map((d, i) => [d.id, all[i]])));
         // Fill in place names that couldn't be looked up when the drive ended.
         const oneDay = groupIntoDays(t.drives).length === 1;
@@ -155,6 +170,12 @@ export default function TripScreen() {
 
   const days = useMemo(() => (trip ? groupIntoDays(trip.drives) : []), [trip]);
   const summary = useMemo(() => (trip ? summarizeDrives(trip.drives) : null), [trip]);
+  // Drives that are just an Iconic Road keep their times hidden, so trip totals leave them out.
+  const hiddenCount = trip ? trip.drives.filter((d) => d.stats.timesHidden).length : 0;
+  const timeSummary = useMemo(
+    () => (trip ? summarizeDrives(trip.drives.filter((d) => !d.stats.timesHidden)) : null),
+    [trip]
+  );
   const timeline = useMemo(
     () =>
       trip && pointsByDrive && days.length === 1 ? buildTripTimeline(trip, pointsByDrive) : [],
@@ -209,6 +230,13 @@ export default function TripScreen() {
   const title = tripTitle(trip) ?? formatDate(first.startedAt);
   // Show the route under the title when the user's own name is the title.
   const subtitle = trip.name ? tripRouteLabel(trip) : null;
+
+  const allHidden = hiddenCount === trip.drives.length;
+  const roadsShown = showIconicRoads ? completions : [];
+  const dayOf = (driveId) => {
+    const drive = trip.drives.find((d) => d.id === driveId);
+    return drive ? (days.find((day) => day.drives.includes(drive))?.number ?? 1) : 1;
+  };
 
   const showMap = () => scrollRef.current?.scrollTo({ y: 0, animated: true });
   // Timeline stop items carry their start time; find which drive they belong to.
@@ -304,22 +332,53 @@ export default function TripScreen() {
       ) : null}
 
       <TitleBlock
-        kicker={tripKicker(first.startedAt, last.endedAt, days.length)}
+        kicker={
+          allHidden && days.length === 1
+            ? formatDayDate(first.startedAt).toUpperCase()
+            : tripKicker(first.startedAt, last.endedAt, days.length)
+        }
         title={title}
         subtitle={subtitle}
         notes={trip.notes}
         onPress={() => setMenu('edit')}
       />
-      <HeroStats stats={summary} units={units} />
+      <HeroStats
+        stats={{ ...summary, movingTimeMs: timeSummary.movingTimeMs }}
+        units={units}
+        timesHidden={allHidden}
+        roadCount={roadsShown.length ? new Set(roadsShown.map((r) => r.roadId)).size : 0}
+      />
+      <IconicRoadsSection completions={roadsShown} dayOf={dayOf} />
       {days.length === 1 ? (
-        <Timeline items={timeline} color={c.accent} units={units} onStopPress={showTripStop} />
+        <Timeline
+          items={timeline}
+          color={c.accent}
+          units={units}
+          onStopPress={showTripStop}
+          roads={roadsShown.map((r) => ({
+            name: getRoad(r.roadId)?.name,
+            completedAt: r.completedAt,
+          }))}
+          hideTimes={hiddenCount > 0}
+        />
       ) : null}
-      <DetailsRows stats={summary} elapsedMs={summary.elapsedMs} units={units} />
+      <DetailsRows
+        stats={allHidden ? summary : timeSummary}
+        elapsedMs={timeSummary.elapsedMs}
+        units={units}
+        timesHidden={allHidden}
+        hiddenNote={
+          hiddenCount > 0 && !allHidden
+            ? `Times leave out ${hiddenCount === 1 ? 'a drive' : `${hiddenCount} drives`} that ${hiddenCount === 1 ? 'is' : 'are'} just an Iconic Road, for safety.`
+            : null
+        }
+      />
       <ChartsCard
         tracks={tracks}
         units={units}
-        avgSpeedMps={averageMovingSpeed(summary)}
+        avgSpeedMps={averageMovingSpeed(timeSummary)}
         onScrub={setHighlight}
+        speedHidden={hiddenCount > 0}
       />
       <SectionHeader title="Days" style={styles.daysHeader} />
       {days.map((day) => (

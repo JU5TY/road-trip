@@ -141,13 +141,14 @@ export async function saveDrivePlaces(driveId, places) {
   await db.runAsync('UPDATE drives SET places = ? WHERE id = ?', JSON.stringify(places), driveId);
 }
 
-/** Delete a drive and its points; its trip goes too if this was its last drive. */
+/** Delete a drive, its points and Iconic Roads; its trip goes too if this was its last drive. */
 export async function deleteDrive(driveId) {
   const db = await getDb();
   await db.withTransactionAsync(async () => {
     const drive = await db.getFirstAsync('SELECT trip_id FROM drives WHERE id = ?', driveId);
     if (!drive) return;
     await db.runAsync('DELETE FROM points WHERE drive_id = ?', driveId);
+    await db.runAsync('DELETE FROM road_completions WHERE drive_id = ?', driveId);
     await db.runAsync('DELETE FROM drives WHERE id = ?', driveId);
     await deleteTripIfEmpty(db, drive.trip_id);
   });

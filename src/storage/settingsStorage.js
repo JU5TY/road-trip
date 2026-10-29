@@ -40,3 +40,14 @@ export function getOnboarded() {
 export function setOnboarded(done) {
   return Storage.setItemAsync(ONBOARDED_KEY, String(done));
 }
+
+const SHOW_ROADS_KEY = 'settings.showIconicRoads';
+
+/** Show Iconic Roads across the app (default on). Completions are recorded either way. */
+export function getShowIconicRoads() {
+  return Storage.getItemSync(SHOW_ROADS_KEY) !== 'false';
+}
+
+export function setShowIconicRoads(show) {
+  return Storage.setItemAsync(SHOW_ROADS_KEY, String(show));
+}

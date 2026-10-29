@@ -17,21 +17,23 @@ function Marker({ kind, color }) {
   return <View style={[styles.dot, { backgroundColor: kind === 'start' ? c.start : c.finish }]} />;
 }
 
-function EventRow({ item, color, onPress }) {
+function EventRow({ item, color, onPress, hideTimes }) {
   const styles = useStyles(makeStyles);
   const isStop = item.type === 'stop';
   const title =
     item.place ||
     (item.type === 'start' ? 'Start' : item.type === 'finish' ? 'Finish' : 'Rest stop');
   const subtitle = isStop
-    ? `Rest stop · ${formatDurationShort(item.endTime - item.time)}`
+    ? hideTimes
+      ? 'Rest stop'
+      : `Rest stop · ${formatDurationShort(item.endTime - item.time)}`
     : item.type === 'start'
       ? 'Start'
       : 'Finish';
 
   const body = (
     <View style={styles.event}>
-      <Text style={[type.small, styles.time]}>{formatTime(item.time)}</Text>
+      {hideTimes ? null : <Text style={[type.small, styles.time]}>{formatTime(item.time)}</Text>}
       <View style={styles.rail}>
         <Marker kind={item.type} color={color} />
       </View>
@@ -58,20 +60,21 @@ function EventRow({ item, color, onPress }) {
 }
 
 /** Between events: a driving leg (solid bar), a break or an overnight (faint bar). */
-function GapRow({ item, color, units }) {
+function GapRow({ item, color, units, hideTimes, roads = [] }) {
   const { c } = useTheme();
   const styles = useStyles(makeStyles);
   const isLeg = item.type === 'leg';
   const icon = isLeg ? 'directions_car' : item.type === 'break' ? 'schedule' : 'bedtime';
+  const duration = hideTimes ? '' : ` · ${formatDurationShort(item.durationMs)}`;
   const text = isLeg
-    ? `${formatDistance(item.distanceM, units)} · ${formatDurationShort(item.durationMs)}`
+    ? `${formatDistance(item.distanceM, units)}${duration}`
     : item.type === 'break'
-      ? `Break, not recording · ${formatDurationShort(item.durationMs)}`
-      : `Overnight${item.place ? ` in ${item.place}` : ''} · ${formatDurationShort(item.durationMs)}`;
+      ? `Break, not recording${duration}`
+      : `Overnight${item.place ? ` in ${item.place}` : ''}${duration}`;
 
   return (
     <View style={styles.gap}>
-      <View style={styles.timeSpacer} />
+      {hideTimes ? null : <View style={styles.timeSpacer} />}
       <View style={styles.rail}>
         <View style={[styles.bar, { backgroundColor: isLeg ? color : c.outline }]} />
       </View>
@@ -80,16 +83,45 @@ function GapRow({ item, color, units }) {
         <Text style={[type.body, styles.muted]} numberOfLines={1}>
           {text}
         </Text>
+        {roads.map((name) => (
+          <View key={name} style={styles.roadChip}>
+            <Icon name="verified" size={14} color={c.onAccentContainer} />
+            <Text style={[type.caps, styles.roadChipText]} numberOfLines={1}>
+              {name}
+            </Text>
+          </View>
+        ))}
       </View>
     </View>
   );
 }
 
+/** Names of the roads completed during the leg at `i`: between the events either side of it. */
+function roadsOnLeg(items, i, roads) {
+  const before = items[i - 1];
+  const after = items[i + 1];
+  if (!before || !after) return [];
+  const from = before.endTime ?? before.time;
+  const names = roads
+    .filter((r) => r.completedAt > from && r.completedAt <= after.time + 60000)
+    .map((r) => r.name);
+  return [...new Set(names)];
+}
+
 /**
  * "Timeline" section: start, driving legs, rest stops and finish (items from
  * utils/timeline.js), drawn in the route colour. onStopPress(item) on a stop.
+ * `roads` ([{ name, completedAt }]) puts an Iconic Road chip on the leg it was
+ * completed on; `hideTimes` drops clock times and durations.
  */
-export default function Timeline({ items, color, units, onStopPress }) {
+export default function Timeline({
+  items,
+  color,
+  units,
+  onStopPress,
+  roads = [],
+  hideTimes = false,
+}) {
   const styles = useStyles(makeStyles);
   const isGap = (item) => ['leg', 'break', 'overnight'].includes(item.type);
   return (
@@ -97,9 +129,22 @@ export default function Timeline({ items, color, units, onStopPress }) {
       <SectionHeader title="Timeline" style={styles.header} />
       {items.map((item, i) =>
         isGap(item) ? (
-          <GapRow key={`${item.type}-${i}`} item={item} color={color} units={units} />
+          <GapRow
+            key={`${item.type}-${i}`}
+            item={item}
+            color={color}
+            units={units}
+            hideTimes={hideTimes}
+            roads={item.type === 'leg' ? roadsOnLeg(items, i, roads) : []}
+          />
         ) : (
-          <EventRow key={`${item.type}-${i}`} item={item} color={color} onPress={onStopPress} />
+          <EventRow
+            key={`${item.type}-${i}`}
+            item={item}
+            color={color}
+            onPress={onStopPress}
+            hideTimes={hideTimes}
+          />
         )
       )}
     </View>
@@ -120,5 +165,17 @@ const makeStyles = (c) => ({
   title: { color: c.text },
   muted: { color: c.textMuted, flexShrink: 1 },
   gapText: { flex: 1, flexDirection: 'row', alignItems: 'center', gap: 8 },
+  roadChip: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+    flexShrink: 1,
+    paddingVertical: 2,
+    paddingLeft: 6,
+    paddingRight: 8,
+    borderRadius: 10,
+    backgroundColor: c.accentContainer,
+  },
+  roadChipText: { color: c.onAccentContainer, letterSpacing: 0 },
   pressed: { opacity: 0.6 },
 });

@@ -11,6 +11,7 @@ import { View } from 'react-native';
 
 import { SettingsProvider, useSettings } from '../context/SettingsContext';
 import { useTheme } from '../hooks/useTheme';
+import { checkAllDrivesIfNeeded } from '../storage/roadStorage';
 import { fontFiles } from '../theme';
 
 function AppStack() {
@@ -33,6 +34,8 @@ function AppStack() {
         if (res) router.navigate('/record');
       })
       .catch((err) => console.warn('[app] resume failed', err));
+    // Check past drives against the Iconic Roads list (once per version of the list).
+    checkAllDrivesIfNeeded().catch((err) => console.warn('[app] Iconic Roads check failed', err));
   }, [ready, onboarded]);
 
   if (!ready) return <View style={{ flex: 1, backgroundColor: c.background }} />;
@@ -54,6 +57,8 @@ function AppStack() {
           <Stack.Screen name="trips/[id]" />
           <Stack.Screen name="drives/[id]" />
           <Stack.Screen name="saved/[id]" options={{ gestureEnabled: false }} />
+          <Stack.Screen name="roads/index" />
+          <Stack.Screen name="roads/[id]" />
         </Stack.Protected>
       </Stack>
     </>

@@ -72,12 +72,16 @@ export async function updateTrip(tripId, { name, notes }) {
   );
 }
 
-/** Delete a trip with all of its drives and their points. */
+/** Delete a trip with all of its drives, their points and Iconic Roads. */
 export async function deleteTrip(tripId) {
   const db = await getDb();
   await db.withTransactionAsync(async () => {
     await db.runAsync(
       'DELETE FROM points WHERE drive_id IN (SELECT id FROM drives WHERE trip_id = ?)',
+      tripId
+    );
+    await db.runAsync(
+      'DELETE FROM road_completions WHERE drive_id IN (SELECT id FROM drives WHERE trip_id = ?)',
       tripId
     );
     await db.runAsync('DELETE FROM drives WHERE trip_id = ?', tripId);

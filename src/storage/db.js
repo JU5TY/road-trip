@@ -8,6 +8,8 @@
 //           stats, places)
 //   points (id, drive_id, latitude, longitude, altitude,  raw GPS fixes of a drive
 //           speed, accuracy, timestamp)
+//   road_completions (id, road_id, drive_id,              Iconic Roads completed on a drive
+//           completed_at)                                 (road ids from src/data/iconicRoads.json)
 import * as SQLite from 'expo-sqlite';
 
 // The original (version 0) schema. Later versions are reached via MIGRATIONS.
@@ -68,6 +70,18 @@ const MIGRATIONS = [
     INSERT INTO trips (id, created_at) SELECT id, started_at FROM drives;
     UPDATE drives SET trip_id = id;
     CREATE INDEX idx_drives_trip ON drives (trip_id, started_at);
+  `,
+  // 3: Iconic Roads completions. Deleted with their drive in driveStorage/tripStorage
+  // (foreign keys aren't enforced).
+  `
+    CREATE TABLE road_completions (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      road_id TEXT NOT NULL,
+      drive_id INTEGER NOT NULL REFERENCES drives(id) ON DELETE CASCADE,
+      completed_at INTEGER NOT NULL
+    );
+    CREATE INDEX idx_road_completions_drive ON road_completions (drive_id);
+    CREATE INDEX idx_road_completions_road ON road_completions (road_id, completed_at);
   `,
 ];
 

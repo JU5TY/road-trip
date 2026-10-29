@@ -20,8 +20,10 @@ export default function SectionHeader({ title, variant = 'title', actionLabel, o
         {title}
       </Text>
       {actionLabel ? (
-        <Pressable onPress={onAction} accessibilityRole="link" hitSlop={12}>
-          <Text style={[type.label, styles.action]}>{actionLabel}</Text>
+        <Pressable onPress={onAction} accessibilityRole="link" hitSlop={12} style={styles.actionWrap}>
+          <Text style={[type.label, styles.action]} numberOfLines={1}>
+            {actionLabel}
+          </Text>
         </Pressable>
       ) : null}
     </View>
@@ -38,7 +40,10 @@ const makeStyles = (c) => ({
     marginHorizontal: 4,
   },
   labelRow: { marginTop: 28, marginBottom: 4, marginHorizontal: 4 },
-  title: { color: c.text },
+  title: { color: c.text, flexShrink: 1 },
   label: { color: c.textMuted },
-  action: { color: c.accent },
+  // Android measures letter-spaced custom fonts a little short, which wrapped
+  // "All roads" onto a hidden second line; no spacing and no shrinking here.
+  actionWrap: { flexShrink: 0, marginLeft: 12 },
+  action: { color: c.accent, letterSpacing: 0 },
 });

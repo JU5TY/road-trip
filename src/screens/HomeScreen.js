@@ -1,20 +1,24 @@
 import { router, useFocusEffect, useIsFocused } from 'expo-router';
 import { useCallback, useState } from 'react';
-import { ActivityIndicator, ScrollView, Text, View } from 'react-native';
+import { ActivityIndicator, Pressable, ScrollView, Text, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import MapIllustration from '../components/MapIllustration';
 import RecordingBar from '../components/RecordingBar';
+import RoadsProgress from '../components/roads/RoadsProgress';
 import TripCard from '../components/TripCard';
 import Button from '../components/ui/Button';
 import ListRow from '../components/ui/ListRow';
 import SectionHeader from '../components/ui/SectionHeader';
 import { useSettings } from '../context/SettingsContext';
 import { useActiveDrive } from '../hooks/useActiveDrive';
+import { useRoadCounts } from '../hooks/useRoadCounts';
+import { useRoadTotals } from '../hooks/useRoadTotals';
 import { useStyles, useTheme } from '../hooks/useTheme';
 import { listTrips } from '../storage/tripStorage';
 import { radius, spacing, type } from '../theme';
 import { distanceParts } from '../utils/format';
+import { ICONIC_ROADS } from '../utils/iconicRoads';
 import { computeTotals, dayNumberFor, isContinuable, tripTitle } from '../utils/tripSummary';
 
 /** Start a new trip, or carry on with a recent one ("Continue Scotland 2026 · Day 4"). */
@@ -75,8 +79,38 @@ function AllTime({ trips, units }) {
   );
 }
 
+/** Iconic Roads progress, linking to the full list. */
+function RoadsCard() {
+  const styles = useStyles(makeStyles);
+  const totals = useRoadTotals();
+  const done = totals ? ICONIC_ROADS.filter((r) => totals.has(r.id)).length : 0;
+  const examples = ICONIC_ROADS.slice(0, 2)
+    .map((r) => r.name)
+    .join(' or ');
+  return (
+    <>
+      <SectionHeader
+        title="Iconic Roads"
+        actionLabel="All roads"
+        onAction={() => router.push('/roads')}
+        style={styles.latestHeader}
+      />
+      <Pressable onPress={() => router.push('/roads')} accessibilityRole="link">
+        <RoadsProgress completed={done} total={ICONIC_ROADS.length} tone="low">
+          {done === 0 ? (
+            <Text style={[type.body, styles.roadsHint]}>
+              Drive any of {ICONIC_ROADS.length} famous roads, like {examples}, to complete them.
+            </Text>
+          ) : null}
+        </RoadsProgress>
+      </Pressable>
+    </>
+  );
+}
+
 export default function HomeScreen() {
-  const { units } = useSettings();
+  const { units, showIconicRoads } = useSettings();
+  const roadCounts = useRoadCounts();
   const { c } = useTheme();
   const styles = useStyles(makeStyles);
   const insets = useSafeAreaInsets();
@@ -135,7 +169,14 @@ export default function HomeScreen() {
             onAction={() => router.navigate('/trips')}
             style={styles.latestHeader}
           />
-          <TripCard trip={latest} units={units} variant="large" showMap={focused} />
+          <TripCard
+            trip={latest}
+            units={units}
+            variant="large"
+            showMap={focused}
+            roadCount={showIconicRoads ? (roadCounts.get(latest.id) ?? 0) : 0}
+          />
+          {showIconicRoads ? <RoadsCard /> : null}
           <AllTime trips={trips} units={units} />
         </>
       ) : (
@@ -152,6 +193,7 @@ export default function HomeScreen() {
               </Text>
             </View>
           </View>
+          {showIconicRoads ? <RoadsCard /> : null}
         </>
       )}
     </ScrollView>
@@ -167,6 +209,7 @@ const makeStyles = (c) => ({
   recording: { marginTop: 12 },
   latestHeader: { marginTop: 32, marginBottom: 12 },
   allTimeHeader: { marginTop: 32, marginBottom: 4 },
+  roadsHint: { color: c.textMuted, fontSize: 14, lineHeight: 20, marginTop: 14 },
   emptyCard: { borderRadius: radius.card, overflow: 'hidden', backgroundColor: c.surface },
   emptyText: { paddingTop: 16, paddingHorizontal: 20, paddingBottom: 18, gap: 4 },
   emptyTitle: { color: c.text, fontFamily: type.button.fontFamily, fontSize: 17 },

@@ -9,6 +9,7 @@ import Button from '../components/ui/Button';
 import Icon from '../components/ui/Icon';
 import SectionHeader from '../components/ui/SectionHeader';
 import { useSettings } from '../context/SettingsContext';
+import { useRoadCounts } from '../hooks/useRoadCounts';
 import { useStyles, useTheme } from '../hooks/useTheme';
 import { ensureDrivePlaces } from '../services/placeService';
 import { deleteTrip, listTrips } from '../storage/tripStorage';
@@ -79,7 +80,8 @@ function EmptyTrips() {
 }
 
 export default function PastTripsScreen() {
-  const { units } = useSettings();
+  const { units, showIconicRoads } = useSettings();
+  const roadCounts = useRoadCounts();
   const styles = useStyles(makeStyles);
   const insets = useSafeAreaInsets();
   // Only keep the map thumbnails alive while Trips is showing.
@@ -166,6 +168,7 @@ export default function PastTripsScreen() {
             trip={item.trip}
             units={units}
             showMap={focused}
+            roadCount={showIconicRoads ? (roadCounts.get(item.trip.id) ?? 0) : 0}
             onLongPress={() => confirmDelete(item.trip)}
           />
         )

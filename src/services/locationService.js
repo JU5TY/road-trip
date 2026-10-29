@@ -13,6 +13,7 @@ import {
   getActiveDrive,
   getDrive,
 } from '../storage/driveStorage';
+import { checkDrive } from '../storage/roadStorage';
 import { applyFixes, finalizeStats, isUsableFix, toFix } from '../utils/geoMath';
 import { ensureDrivePlaces } from './placeService';
 
@@ -156,7 +157,10 @@ export async function startDrive({ tripId = null } = {}) {
   return { drive, background };
 }
 
-/** Stop recording and close out the active drive. Returns the completed drive id. */
+/**
+ * Stop recording and close out the active drive, including its Iconic Roads.
+ * Returns the completed drive id.
+ */
 export async function stopDrive() {
   await stopUpdates();
   // Wait for any in-flight batch so the final stats include it.
@@ -165,6 +169,10 @@ export async function stopDrive() {
     if (!drive) return null;
     const endedAt = Date.now();
     await completeDrive(drive.id, endedAt, finalizeStats(drive.stats));
+    // Iconic Roads, before Drive saved opens so it can show them (all offline).
+    await checkDrive(drive.id).catch((err) =>
+      console.warn('[locationService] Iconic Roads check failed', err)
+    );
     // Look up place names now while we're likely online; failures retry later.
     getDrive(drive.id)
       .then((completed) => ensureDrivePlaces(completed, { includeStops: true }))

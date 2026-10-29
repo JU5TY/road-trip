@@ -114,3 +114,16 @@ export function formatBreakReminder(minutes) {
   const text = hours === whole ? String(whole) : `${whole}½`;
   return `Every ${text} ${hours === 1 ? 'hour' : 'hours'}`;
 }
+
+/** "5 Nov 2026" */
+export const formatShortDate = (ts) =>
+  new Date(ts).toLocaleDateString(undefined, { day: 'numeric', month: 'short', year: 'numeric' });
+
+/** "Wed 5 Nov 2026" */
+export const formatLongDate = (ts) =>
+  new Date(ts).toLocaleDateString(undefined, {
+    weekday: 'short',
+    day: 'numeric',
+    month: 'short',
+    year: 'numeric',
+  });

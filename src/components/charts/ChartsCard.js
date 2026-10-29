@@ -22,8 +22,9 @@ const OPTIONS = [
  * "Charts" section: one chart with an Elevation | Speed switch, both against
  * distance from the start. `tracks` are the drives in order, each in its day's
  * colour: [{ key, color, points }]. `avgSpeedMps` draws the dashed Avg line.
+ * `speedHidden` leaves only the elevation chart (times hidden for safety).
  */
-export default function ChartsCard({ tracks, units, avgSpeedMps, onScrub }) {
+export default function ChartsCard({ tracks, units, avgSpeedMps, onScrub, speedHidden = false }) {
   const styles = useStyles(makeStyles);
   const [choice, setChoice] = useState('elevation');
 
@@ -51,8 +52,9 @@ export default function ChartsCard({ tracks, units, avgSpeedMps, onScrub }) {
 
   const hasElevation = elevation.some((s) => s.data.length > 1);
   const hasSpeed = speed.some((s) => s.data.length > 1);
-  if (!hasSpeed) return null;
-  const showing = hasElevation ? choice : 'speed';
+  // With times hidden (a drive that is just an Iconic Road), only elevation is shown.
+  if (speedHidden ? !hasElevation : !hasSpeed) return null;
+  const showing = speedHidden ? 'elevation' : hasElevation ? choice : 'speed';
 
   const select = (next) => {
     onScrub?.(null);
@@ -65,7 +67,7 @@ export default function ChartsCard({ tracks, units, avgSpeedMps, onScrub }) {
     <View>
       <View style={styles.header}>
         <SectionHeader title="Charts" style={styles.title} />
-        {hasElevation ? (
+        {hasElevation && !speedHidden ? (
           <View style={styles.switch} role="radiogroup">
             {OPTIONS.map(([value, label]) => {
               const on = showing === value;

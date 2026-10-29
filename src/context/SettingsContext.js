@@ -15,6 +15,7 @@ export function SettingsProvider({ children }) {
   // Whether Welcome has been passed. null until known: people who used the app
   // before Welcome existed already have drives, so they skip it.
   const [onboarded, setOnboarded] = useState(settingsStorage.getOnboarded);
+  const [showIconicRoads, setShowIconicRoads] = useState(settingsStorage.getShowIconicRoads);
 
   useEffect(() => {
     if (onboarded !== null) return;
@@ -38,6 +39,11 @@ export function SettingsProvider({ children }) {
         setBreakReminderMinutes(next);
         save(settingsStorage.setBreakReminderMinutes(next));
       },
+      showIconicRoads,
+      setShowIconicRoads: (next) => {
+        setShowIconicRoads(next);
+        save(settingsStorage.setShowIconicRoads(next));
+      },
       onboarded,
       finishOnboarding: () => {
         setOnboarded(true);
@@ -49,7 +55,7 @@ export function SettingsProvider({ children }) {
         save(settingsStorage.setOnboarded(false));
       },
     }),
-    [units, breakReminderMinutes, onboarded]
+    [units, breakReminderMinutes, showIconicRoads, onboarded]
   );
 
   return <SettingsContext.Provider value={value}>{children}</SettingsContext.Provider>;

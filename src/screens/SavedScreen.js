@@ -6,38 +6,48 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { routeMarkers } from '../components/detail/mapMarkers';
 import RouteMap from '../components/RouteMap';
 import Button from '../components/ui/Button';
+import Icon from '../components/ui/Icon';
 import IconButton from '../components/ui/IconButton';
 import { useSettings } from '../context/SettingsContext';
 import { useStyles, useTheme } from '../hooks/useTheme';
 import { ensureDrivePlaces } from '../services/placeService';
 import { getDrive, getDrivePoints } from '../storage/driveStorage';
+import { getDriveCompletions, getRoadTotals } from '../storage/roadStorage';
 import { getTrip } from '../storage/tripStorage';
 import { dayColorFor, spacing, type } from '../theme';
 import { distanceParts, formatDate, formatDurationShort } from '../utils/format';
 import { downsample } from '../utils/geoMath';
+import { ICONIC_ROADS, completedLabel, groupByRoad } from '../utils/iconicRoads';
 import { dayNumberFor, groupIntoDays, routeLabel, tripTitle } from '../utils/tripSummary';
 
 /** Shown after Stop: the drive just saved, with Done and View trip. */
 export default function SavedScreen() {
   const { id } = useLocalSearchParams();
-  const { units } = useSettings();
+  const { units, showIconicRoads } = useSettings();
   const { c } = useTheme();
   const styles = useStyles(makeStyles);
   const insets = useSafeAreaInsets();
   const [drive, setDrive] = useState(null);
   const [points, setPoints] = useState(null);
   const [trip, setTrip] = useState(null);
+  const [roads, setRoads] = useState({ completions: [], completedCount: 0 });
 
   useEffect(() => {
     let cancelled = false;
     (async () => {
       const d = await getDrive(Number(id));
       if (cancelled || !d) return;
-      const [p, t] = await Promise.all([getDrivePoints(d.id), getTrip(d.tripId)]);
+      const [p, t, completions, totals] = await Promise.all([
+        getDrivePoints(d.id),
+        getTrip(d.tripId),
+        getDriveCompletions(d.id),
+        getRoadTotals(),
+      ]);
       if (cancelled) return;
       setDrive(d);
       setPoints(p);
       setTrip(t);
+      setRoads({ completions, completedCount: totals.size });
       const places = await ensureDrivePlaces(d, { includeStops: true });
       if (!cancelled) setDrive((prev) => ({ ...prev, places }));
     })().catch((err) => console.warn('[saved] load failed', err));
@@ -111,10 +121,32 @@ export default function SavedScreen() {
         <View style={styles.hero}>
           <Text style={styles.heroValue}>{distance.value}</Text>
           <Text style={styles.heroUnit}>{distance.unit}</Text>
-          <Text style={[type.bodyLarge, styles.muted, styles.driving]}>
-            {formatDurationShort(drive.stats.movingTimeMs)} driving time
-          </Text>
+          {drive.stats.timesHidden ? null : (
+            <Text style={[type.bodyLarge, styles.muted, styles.driving]}>
+              {formatDurationShort(drive.stats.movingTimeMs)} driving time
+            </Text>
+          )}
         </View>
+        {showIconicRoads
+          ? groupByRoad(roads.completions).map(({ road, count }) => (
+              <View key={road.id} style={styles.roadCard}>
+                <View style={styles.roadBadge}>
+                  <Icon name="verified" filled size={32} color={c.onAccent} />
+                </View>
+                <View style={styles.flex}>
+                  <Text style={[type.small, styles.roadMuted]}>
+                    Iconic Road {count > 1 ? completedLabel(count).toLowerCase() : 'completed'}
+                  </Text>
+                  <Text style={[type.section, styles.roadName]} numberOfLines={1}>
+                    {road.name}
+                  </Text>
+                  <Text style={[type.small, styles.roadMuted]}>
+                    {roads.completedCount} of {ICONIC_ROADS.length} now completed
+                  </Text>
+                </View>
+              </View>
+            ))
+          : null}
         <View style={styles.flex} />
         <View style={styles.buttons}>
           <Button
@@ -155,4 +187,23 @@ const makeStyles = (c) => ({
   flex: { flex: 1 },
   buttons: { flexDirection: 'row', gap: 10 },
   hint: { textAlign: 'center', marginTop: 12 },
+  roadCard: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 16,
+    marginTop: 22,
+    padding: 18,
+    borderRadius: 28,
+    backgroundColor: c.accentContainer,
+  },
+  roadBadge: {
+    width: 56,
+    height: 56,
+    borderRadius: 28,
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: c.accent,
+  },
+  roadName: { color: c.onAccentContainer },
+  roadMuted: { color: c.accentContainerMuted },
 });

@@ -30,7 +30,7 @@ export default function SettingsScreen() {
       <ActionSheet
         visible={picking}
         title="Break reminder"
-        message="On Record, the Since break card turns amber after this much driving without a stop."
+        message="On Record, a Since break card appears 15 minutes before this much driving without a stop, then turns amber."
         actions={BREAK_REMINDER_OPTIONS.map((minutes) => ({
           key: String(minutes),
           label: formatBreakReminder(minutes),

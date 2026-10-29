@@ -30,30 +30,47 @@ const REFRESH_MS = 1000;
 const ROUTE_REFRESH_MS = 10 * 1000;
 const ROUTE_POINTS = 400;
 const POSITION_DELTA = 0.02; // ~2 km across when centring on the car
+const BREAK_CARD_LEAD_MS = 15 * 60 * 1000; // show the break card this long before a break is due
 
 /**
  * Map for Record: the live route so far and the phone's position. Centres on
- * the latest fix (or the route) when asked through `centreKey`.
+ * the latest fix (or the route) when asked through `centreKey`. With `follow`,
+ * it also tracks each new fix until the map is moved by hand.
  */
-function LiveMap({ route, position, centreKey }) {
+function LiveMap({ route, position, centreKey, follow = false }) {
   const { scheme, c } = useTheme();
   const mapRef = useRef(null);
+  const followingRef = useRef(true);
 
   useEffect(() => {
     if (!position) return;
+    followingRef.current = true;
     mapRef.current?.animateToRegion(
       { ...position, latitudeDelta: POSITION_DELTA, longitudeDelta: POSITION_DELTA },
       500
     );
-    // Only re-centre when asked (or on the first fix), not on every new fix.
+    // Zoom back in only when asked (or on the first fix), not on every new fix.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [centreKey, Boolean(position)]);
+
+  // Keep the car in view as fixes arrive, at whatever zoom is set.
+  const latitude = position?.latitude;
+  const longitude = position?.longitude;
+  useEffect(() => {
+    if (!follow || latitude == null || !followingRef.current) return;
+    mapRef.current?.animateCamera({ center: { latitude, longitude } }, { duration: 500 });
+  }, [follow, latitude, longitude]);
 
   return (
     <MapView
       ref={mapRef}
       style={StyleSheet.absoluteFill}
       userInterfaceStyle={scheme}
+      // Panning or zooming by hand pauses following until the centre button is tapped.
+      // isGesture is only reported by Google Maps (Android); Apple Maps keeps following.
+      onRegionChangeStart={(_, details) => {
+        if (details?.isGesture) followingRef.current = false;
+      }}
       showsUserLocation
       showsMyLocationButton={false}
       toolbarEnabled={false}
@@ -368,7 +385,10 @@ export default function RecordScreen() {
         ? 'Paused'
         : 'Recording';
   const distance = distanceParts(live.distanceM, units);
-  const breakDue = breakReminderMinutes > 0 && live.stintMs >= breakReminderMinutes * 60000;
+  // The break card only appears as a break comes due; until then it would match Driving time.
+  const breakDueMs = breakReminderMinutes * 60000;
+  const breakNear = breakReminderMinutes > 0 && live.stintMs >= breakDueMs - BREAK_CARD_LEAD_MS;
+  const breakDue = breakReminderMinutes > 0 && live.stintMs >= breakDueMs;
   const minimise = () => router.navigate('/');
 
   return (
@@ -376,7 +396,7 @@ export default function RecordScreen() {
       {permissionSheet}
       {!mapHidden ? (
         <View style={[styles.map, styles.mapShrink, { flexBasis: 370 + insets.top }]}>
-          <LiveMap route={route} position={position} centreKey={centreKey} />
+          <LiveMap route={route} position={position} centreKey={centreKey} follow />
           <IconButton
             icon="expand_more"
             iconSize={26}
@@ -450,14 +470,16 @@ export default function RecordScreen() {
             label="Driving time"
             value={formatDuration(live.drivingMs)}
           />
-          <StatCard
-            style={styles.half}
-            notch
-            tone={breakDue ? 'warning' : 'surface'}
-            icon="local_cafe"
-            label={breakDue ? 'Time for a break' : 'Since break'}
-            value={live.stintMs > 0 ? formatDuration(live.stintMs) : '—'}
-          />
+          {breakNear ? (
+            <StatCard
+              style={styles.half}
+              notch
+              tone={breakDue ? 'warning' : 'surface'}
+              icon="local_cafe"
+              label={breakDue ? 'Time for a break' : 'Since break'}
+              value={formatDuration(live.stintMs)}
+            />
+          ) : null}
         </View>
 
         <View style={styles.controls}>

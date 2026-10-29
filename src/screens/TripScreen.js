@@ -321,10 +321,15 @@ export default function TripScreen() {
         avgSpeedMps={averageMovingSpeed(summary)}
         onScrub={setHighlight}
       />
-      <SectionHeader title="Days" style={styles.daysHeader} />
-      {days.map((day) => (
-        <DayRow key={day.number} day={day} units={units} multiDay={days.length > 1} />
-      ))}
+      {/* A trip of one drive would only repeat itself here. */}
+      {trip.drives.length > 1 ? (
+        <>
+          <SectionHeader title="Days" style={styles.daysHeader} />
+          {days.map((day) => (
+            <DayRow key={day.number} day={day} units={units} multiDay={days.length > 1} />
+          ))}
+        </>
+      ) : null}
     </DetailLayout>
   );
 }

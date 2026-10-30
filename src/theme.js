@@ -44,6 +44,7 @@ const light = {
   finish: '#D93025',
   // Drawn map illustrations (Welcome, empty Home, Your map).
   mapLand: '#EEF2EC',
+  heroMapLand: '#EEF2EC', // the round maps on Home and Welcome, on the band
   mapWater: '#C9DDF2',
   mapRoad: '#FFFFFF',
   progressTrack: '#E3E5E8',
@@ -117,6 +118,7 @@ const dark = {
   start: '#34A853',
   finish: '#EA4335',
   mapLand: '#1C2226',
+  heroMapLand: '#2C2D31', // the card colour, so the circle stands out on the band
   mapWater: '#1E3348',
   mapRoad: '#2C343A',
   progressTrack: '#3A3B3F',

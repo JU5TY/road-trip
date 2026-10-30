@@ -69,7 +69,7 @@ export default function RouteCircle({ size, lines, background, drawIn = false })
 
   return (
     <Svg width={size} height={size}>
-      <Circle cx={size / 2} cy={size / 2} r={size / 2} fill={c.mapLand} />
+      <Circle cx={size / 2} cy={size / 2} r={size / 2} fill={c.heroMapLand} />
       {drawn.fit && background ? background(drawn.fit) : null}
       {drawn.lines.map((l, i) => {
         const stroke = {

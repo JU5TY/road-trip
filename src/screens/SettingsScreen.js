@@ -178,7 +178,7 @@ export default function SettingsScreen() {
               <Icon name="add" size={24} color={c.accent} />
             </View>
           }
-          title={vehicles.length ? 'Add another vehicle' : 'Add your vehicle'}
+          title={vehicles.length ? 'Add vehicle' : 'Add your vehicle'}
           titleStyle={styles.addTitle}
           right={vehicles.length ? <PremiumTag /> : null}
           onPress={canAddVehicle ? () => setEditing('new') : openPremium}

@@ -1,4 +1,4 @@
-import { Platform, StyleSheet, View } from 'react-native';
+import { StyleSheet, View } from 'react-native';
 import MapView, { Marker, Polyline } from 'react-native-maps';
 
 import { useStyles, useTheme } from '../hooks/useTheme';
@@ -21,9 +21,9 @@ function regionFor(coordinates) {
 }
 
 /**
- * Non-interactive map thumbnail of a route, for cards. On Android it uses Google
- * Maps lite mode (a static image), which is cheaper when several previews are on
- * screen; iOS has no lite mode. Taps pass through to the parent. Pass `active={false}` to swap the map for a placeholder (e.g. when its
+ * Non-interactive map thumbnail of a route, for cards (Home's Latest trip).
+ * Not Google Maps lite mode: that ignores dark mode on Android. Taps pass
+ * through to the parent. Pass `active={false}` to swap the map for a placeholder (e.g. when its
  * screen is in the background) so no native map is kept alive off-screen.
  * A green dot marks the start and a red one the finish, as on the trip maps.
  * segments: [{ key, coordinates, color, dotted? }] (dotted: a ferry or tunnel)
@@ -40,7 +40,6 @@ export default function RoutePreview({ segments, height = 160, active = true }) 
       <MapView
         style={StyleSheet.absoluteFill}
         initialRegion={regionFor(all)}
-        liteMode={Platform.OS === 'android'}
         userInterfaceStyle={scheme}
         scrollEnabled={false}
         zoomEnabled={false}

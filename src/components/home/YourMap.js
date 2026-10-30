@@ -118,7 +118,7 @@ const makeStyles = (c) => ({
     height: SIZE,
     borderRadius: SIZE / 2,
     overflow: 'hidden',
-    backgroundColor: c.mapLand,
+    backgroundColor: c.heroMapLand,
   },
   pressed: { opacity: 0.9 },
   // Overlaps the circle's bottom-right edge.

@@ -23,7 +23,7 @@ import {
 } from '../services/locationService';
 import { getActiveDrive, getDriveRoutePreview } from '../storage/driveStorage';
 import { getContinuableTrip, getTrip } from '../storage/tripStorage';
-import { dayColorFor, spacing, type } from '../theme';
+import { spacing, type } from '../theme';
 import { driveGaps, routeSegments } from '../utils/crossings';
 import { distanceParts, formatDistance, formatDurationShort, formatSpeed } from '../utils/format';
 import { liveMetrics } from '../utils/geoMath';
@@ -329,7 +329,6 @@ export default function RecordScreen() {
     const canContinue = Boolean(recent);
     const continuing = canContinue && choice === 'continue';
     const recentSummary = recent ? summarizeDrives(recent.drives) : null;
-    const lastDay = recent ? dayNumberFor(recent.drives, recent.drives.at(-1).startedAt) : null;
     const lastPlace = recent?.drives.at(-1).places.end;
     return (
       <View style={[styles.screen, styles.readyScreen]}>
@@ -343,14 +342,6 @@ export default function RecordScreen() {
             onPress={() => (router.canGoBack() ? router.back() : router.navigate('/'))}
             style={[styles.mapButtonLeft, { top: insets.top + 12 }]}
           />
-          {recent && lastPlace ? (
-            <View style={[styles.finishedChip, { top: insets.top + 150 }]}>
-              <Icon name="flag" filled size={18} color={dayColorFor(c, lastDay)} />
-              <Text style={[type.smallStrong, styles.text]} numberOfLines={1}>
-                Day {lastDay} finished in {lastPlace}
-              </Text>
-            </View>
-          ) : null}
           {here ? (
             <IconButton
               icon="my_location"
@@ -689,19 +680,6 @@ const makeStyles = (c) => ({
   onContainerMuted: { color: c.accentContainerMuted },
 
   readyScreen: { backgroundColor: c.background },
-  finishedChip: {
-    position: 'absolute',
-    alignSelf: 'center',
-    maxWidth: '60%',
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 6,
-    height: 32,
-    paddingHorizontal: 12,
-    borderRadius: 16,
-    backgroundColor: c.floating,
-    ...c.cardShadow,
-  },
   readyBody: {
     flexGrow: 1,
     flexShrink: 0,

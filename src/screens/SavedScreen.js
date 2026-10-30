@@ -1,6 +1,6 @@
 import { router, useLocalSearchParams } from 'expo-router';
 import { useEffect, useMemo, useState } from 'react';
-import { ActivityIndicator, Text, View } from 'react-native';
+import { ActivityIndicator, Animated, Easing, Text, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { routeMarkers } from '../components/detail/mapMarkers';
@@ -16,11 +16,71 @@ import { getDriveCompletions, getRoadTotals } from '../storage/roadStorage';
 import { getTrip } from '../storage/tripStorage';
 import { dayColorFor, spacing, type } from '../theme';
 import { distanceParts, formatDate, formatDurationShort } from '../utils/format';
+import { comingSoon } from '../utils/comingSoon';
 import { downsample } from '../utils/geoMath';
-import { ICONIC_ROADS, completedLabel, groupByRoad } from '../utils/iconicRoads';
+import { ICONIC_ROADS, groupByRoad } from '../utils/iconicRoads';
 import { dayNumberFor, groupIntoDays, routeLabel, tripTitle } from '../utils/tripSummary';
 
-/** Shown after Stop: the drive just saved, with Done and View trip. */
+/** Fades and slides its children up into place, `delay` ms after mounting. */
+function FadeUp({ delay, style, children }) {
+  const progress = useState(() => new Animated.Value(0))[0];
+  useEffect(() => {
+    Animated.timing(progress, {
+      toValue: 1,
+      duration: 400,
+      delay,
+      easing: Easing.out(Easing.quad),
+      useNativeDriver: true,
+    }).start();
+  }, [progress, delay]);
+  const translateY = progress.interpolate({ inputRange: [0, 1], outputRange: [8, 0] });
+  return (
+    <Animated.View style={[style, { opacity: progress, transform: [{ translateY }] }]}>
+      {children}
+    </Animated.View>
+  );
+}
+
+/** The completed road's tick: the badge pops in, then its halo grows around it. */
+function RoadBadge() {
+  const { c } = useTheme();
+  const styles = useStyles(makeStyles);
+  const pop = useState(() => new Animated.Value(0))[0];
+  const halo = useState(() => new Animated.Value(0))[0];
+  useEffect(() => {
+    Animated.parallel([
+      Animated.timing(pop, {
+        toValue: 1,
+        duration: 600,
+        delay: 600,
+        easing: Easing.bezier(0.2, 0.8, 0.2, 1),
+        useNativeDriver: true,
+      }),
+      Animated.timing(halo, {
+        toValue: 1,
+        duration: 600,
+        delay: 700,
+        easing: Easing.out(Easing.quad),
+        useNativeDriver: true,
+      }),
+    ]).start();
+  }, [pop, halo]);
+  const popScale = pop.interpolate({ inputRange: [0, 0.6, 1], outputRange: [0.4, 1.12, 1] });
+  const popOpacity = pop.interpolate({ inputRange: [0, 0.6, 1], outputRange: [0, 1, 1] });
+  const haloScale = halo.interpolate({ inputRange: [0, 1], outputRange: [0.6, 1] });
+  return (
+    <View style={styles.badgeWrap}>
+      <Animated.View style={[styles.halo, { opacity: halo, transform: [{ scale: haloScale }] }]} />
+      <Animated.View
+        style={[styles.roadBadge, { opacity: popOpacity, transform: [{ scale: popScale }] }]}
+      >
+        <Icon name="verified" filled size={40} color={c.onRoadBadge} />
+      </Animated.View>
+    </View>
+  );
+}
+
+/** Shown after Stop: the drive just saved, with Share and Done. */
 export default function SavedScreen() {
   const { id } = useLocalSearchParams();
   const { units, showIconicRoads } = useSettings();
@@ -30,7 +90,7 @@ export default function SavedScreen() {
   const [drive, setDrive] = useState(null);
   const [points, setPoints] = useState(null);
   const [trip, setTrip] = useState(null);
-  const [roads, setRoads] = useState({ completions: [], completedCount: 0 });
+  const [roads, setRoads] = useState({ completions: [], completedCount: 0, totals: new Map() });
 
   useEffect(() => {
     let cancelled = false;
@@ -47,7 +107,7 @@ export default function SavedScreen() {
       setDrive(d);
       setPoints(p);
       setTrip(t);
-      setRoads({ completions, completedCount: totals.size });
+      setRoads({ completions, completedCount: totals.size, totals });
       const places = await ensureDrivePlaces(d, { includeStops: true });
       if (!cancelled) setDrive((prev) => ({ ...prev, places }));
     })().catch((err) => console.warn('[saved] load failed', err));
@@ -111,99 +171,123 @@ export default function SavedScreen() {
           style={[styles.close, { top: insets.top + 12 }]}
         />
       </View>
-      <View style={[styles.body, { paddingBottom: insets.bottom + spacing.lg }]}>
-        <Text style={[type.smallStrong, styles.kicker]} numberOfLines={1}>
+      <View style={[styles.body, { paddingBottom: insets.bottom + 24 }]}>
+        <Text style={[type.kicker, styles.kicker]} numberOfLines={1}>
           {kicker}
         </Text>
-        <Text style={[type.headline, styles.title]} numberOfLines={2}>
+        <Text style={[type.title, styles.title]} numberOfLines={1}>
           {routeLabel(drive.places) ?? formatDate(drive.startedAt)}
         </Text>
-        <View style={styles.hero}>
-          <Text style={styles.heroValue}>{distance.value}</Text>
-          <Text style={styles.heroUnit}>{distance.unit}</Text>
-          {drive.stats.timesHidden ? null : (
-            <Text style={[type.bodyLarge, styles.muted, styles.driving]}>
-              {formatDurationShort(drive.stats.movingTimeMs)} driving time
-            </Text>
-          )}
-        </View>
+        <FadeUp delay={300} style={styles.stats}>
+          {[
+            [`${distance.value} ${distance.unit}`, 'distance'],
+            ...(drive.stats.timesHidden
+              ? []
+              : [[formatDurationShort(drive.stats.movingTimeMs), 'driving']]),
+            [String(drive.stats.stopCount), drive.stats.stopCount === 1 ? 'stop' : 'stops'],
+          ].map(([value, label]) => (
+            <View key={label} style={styles.stat}>
+              <Text style={[type.stat, styles.statValue]} numberOfLines={1}>
+                {value}
+              </Text>
+              <Text style={[type.label, styles.muted, styles.regular]}>{label}</Text>
+            </View>
+          ))}
+        </FadeUp>
         {showIconicRoads
-          ? groupByRoad(roads.completions).map(({ road, count }) => (
-              <View key={road.id} style={styles.roadCard}>
-                <View style={styles.roadBadge}>
-                  <Icon name="verified" filled size={32} color={c.onAccent} />
-                </View>
-                <View style={styles.flex}>
-                  <Text style={[type.small, styles.roadMuted]}>
-                    Iconic Road {count > 1 ? completedLabel(count).toLowerCase() : 'completed'}
+          ? groupByRoad(roads.completions).map(({ road, count }) => {
+              const total = roads.totals.get(road.id)?.count ?? count;
+              const today =
+                count === 1
+                  ? 'Completed today'
+                  : count === 2
+                    ? 'Twice today'
+                    : `${count} times today`;
+              return (
+                <View key={road.id} style={styles.roadCard} accessible>
+                  <RoadBadge />
+                  <Text style={[type.kicker, styles.roadMuted, styles.roadKicker]}>
+                    ICONIC ROAD COMPLETED
                   </Text>
                   <Text style={[type.section, styles.roadName]} numberOfLines={1}>
                     {road.name}
                   </Text>
-                  <Text style={[type.small, styles.roadMuted]}>
-                    {roads.completedCount} of {ICONIC_ROADS.length} now completed
+                  <Text style={[type.label, styles.roadMuted, styles.regular, styles.roadLine]}>
+                    {[
+                      today,
+                      total > count ? `${total} times in all` : null,
+                      `${roads.completedCount} of ${ICONIC_ROADS.length} roads`,
+                    ]
+                      .filter(Boolean)
+                      .join(' · ')}
                   </Text>
                 </View>
-              </View>
-            ))
+              );
+            })
           : null}
         <View style={styles.flex} />
         <View style={styles.buttons}>
           <Button
             variant="tonal"
-            label="View trip"
+            icon="ios_share"
+            label="Share"
             style={styles.flex}
-            onPress={() => router.replace(`/trips/${trip.id}`)}
+            onPress={() => comingSoon('Sharing')}
           />
           <Button label="Done" style={styles.flex} onPress={done} />
         </View>
-        <Text style={[type.small, styles.muted, styles.hint]}>
-          Driving again tomorrow? Add Day {dayNumber + 1} from Home.
-        </Text>
       </View>
     </View>
   );
 }
 
 const makeStyles = (c) => ({
-  screen: { flex: 1, backgroundColor: c.background },
+  screen: { flex: 1, backgroundColor: c.screen },
   center: { alignItems: 'center', justifyContent: 'center' },
   map: { borderBottomWidth: 1, borderBottomColor: c.outline, backgroundColor: c.surface },
   close: { position: 'absolute', left: 12 },
-  body: { flex: 1, paddingHorizontal: spacing.md, paddingTop: spacing.lg },
-  kicker: { color: c.accent, letterSpacing: 0.4, marginHorizontal: 4 },
-  title: { color: c.text, marginTop: 4, marginHorizontal: 4, fontSize: 28, lineHeight: 34 },
-  hero: {
-    flexDirection: 'row',
-    alignItems: 'baseline',
-    gap: 8,
-    marginTop: 14,
-    marginHorizontal: 4,
-  },
-  heroValue: { ...type.display, color: c.text },
-  heroUnit: { ...type.section, fontFamily: type.bodyLarge.fontFamily, color: c.textMuted },
-  driving: { marginLeft: 8, flexShrink: 1 },
+  body: { flex: 1, paddingHorizontal: spacing.md, paddingTop: 20 },
+  kicker: { color: c.accent, marginHorizontal: 4 },
+  title: { color: c.text, marginTop: 4, marginHorizontal: 4 },
+  stats: { flexDirection: 'row', marginTop: 18 },
+  stat: { flex: 1, alignItems: 'center' },
+  statValue: { color: c.accent },
+  regular: { fontFamily: type.body.fontFamily, textAlign: 'center' },
   muted: { color: c.textMuted },
   flex: { flex: 1 },
   buttons: { flexDirection: 'row', gap: 10 },
-  hint: { textAlign: 'center', marginTop: 12 },
   roadCard: {
-    flexDirection: 'row',
     alignItems: 'center',
-    gap: 16,
-    marginTop: 22,
-    padding: 18,
-    borderRadius: 28,
-    backgroundColor: c.accentContainer,
+    marginTop: 20,
+    paddingTop: 20,
+    paddingHorizontal: 16,
+    paddingBottom: 18,
+    borderRadius: 12,
+    backgroundColor: c.roadContainer,
+  },
+  badgeWrap: { width: 96, height: 96, alignItems: 'center', justifyContent: 'center' },
+  // Faint ring (45%) that grows in around the badge.
+  halo: {
+    position: 'absolute',
+    top: 0,
+    left: 0,
+    right: 0,
+    bottom: 0,
+    borderRadius: 48,
+    borderWidth: 6,
+    borderColor: c.roadHalo,
+    opacity: 0.45,
   },
   roadBadge: {
-    width: 56,
-    height: 56,
-    borderRadius: 28,
+    width: 72,
+    height: 72,
+    borderRadius: 36,
     alignItems: 'center',
     justifyContent: 'center',
-    backgroundColor: c.accent,
+    backgroundColor: c.roadBadge,
   },
-  roadName: { color: c.onAccentContainer },
-  roadMuted: { color: c.accentContainerMuted },
+  roadKicker: { marginTop: 10 },
+  roadName: { color: c.onRoadContainer, fontSize: 22, lineHeight: 28, marginTop: 2 },
+  roadLine: { marginTop: 2 },
+  roadMuted: { color: c.roadContainerMuted },
 });

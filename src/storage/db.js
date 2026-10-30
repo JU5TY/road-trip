@@ -83,6 +83,18 @@ const MIGRATIONS = [
     CREATE INDEX idx_road_completions_drive ON road_completions (drive_id);
     CREATE INDEX idx_road_completions_road ON road_completions (road_id, completed_at);
   `,
+  // 4: the countries each drive went through (JSON, see utils/countries.js).
+  'ALTER TABLE drives ADD COLUMN countries TEXT;',
+  // 5: the Garage. Each drive records the vehicle it was driven in (null: none set).
+  `
+    CREATE TABLE vehicles (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      name TEXT NOT NULL,
+      is_default INTEGER NOT NULL DEFAULT 0,
+      created_at INTEGER NOT NULL
+    );
+    ALTER TABLE drives ADD COLUMN vehicle_id INTEGER REFERENCES vehicles(id);
+  `,
 ];
 
 async function migrate(db) {

@@ -13,15 +13,22 @@ export const MAP_HEIGHT = 400;
  * Trip / Day page: a full-width map under the status bar with a round back
  * button, the content below it, and a floating toolbar at the bottom.
  * actions: [{ icon, label, onPress, primary? }]; a primary action shows its label.
+ * `mapHeight` below the status bar: 400 on Trip, 380 on Day, 360 on a road.
  */
-export default function DetailLayout({ map, actions = [], scrollRef, children }) {
+export default function DetailLayout({
+  map,
+  mapHeight = MAP_HEIGHT,
+  actions = [],
+  scrollRef,
+  children,
+}) {
   const insets = useSafeAreaInsets();
   const styles = useStyles(makeStyles);
 
   return (
     <View style={styles.screen}>
       <ScrollView ref={scrollRef} contentContainerStyle={{ paddingBottom: 120 + insets.bottom }}>
-        <View style={[styles.map, { height: MAP_HEIGHT + insets.top }]}>{map}</View>
+        <View style={[styles.map, { height: mapHeight + insets.top }]}>{map}</View>
         <View style={styles.content}>{children}</View>
       </ScrollView>
       <IconButton
@@ -90,7 +97,7 @@ const makeStyles = (c) => ({
     elevation: 6,
   },
   tool: { width: 48, height: 48, borderRadius: 24, alignItems: 'center', justifyContent: 'center' },
-  toolPressed: { backgroundColor: c.surface },
+  toolPressed: { backgroundColor: c.track },
   primary: {
     flexDirection: 'row',
     alignItems: 'center',

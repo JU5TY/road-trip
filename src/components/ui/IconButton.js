@@ -6,8 +6,9 @@ import Icon from './Icon';
 
 /**
  * Round icon button. variant: 'floating' (white with shadow, over the map) |
- * 'surface' (grey) | 'filled' (green) | 'stop' (red) | 'plain' (no fill).
- * With `label`, the caption sits under the circle (Record's Maps / Stop row).
+ * 'surface' (grey) | 'record' (Record's controls) | 'filled' (blue) | 'stop' (red) |
+ * 'plain' (no fill). With `label`, the caption sits under the circle (Record's
+ * Maps / Stop row); `labelStyle` sets its size.
  */
 export default function IconButton({
   icon,
@@ -18,18 +19,20 @@ export default function IconButton({
   iconSize = 24,
   filled = false,
   label,
+  labelStyle,
   style,
 }) {
   const { c } = useTheme();
   const styles = useStyles(makeStyles);
   const bg = {
     floating: c.floating,
-    surface: c.surface,
+    surface: c.track,
+    record: c.recordControl,
     filled: c.accent,
     stop: c.stop,
     plain: 'transparent',
   }[variant];
-  const fg = { filled: c.onAccent, stop: c.onStop }[variant] ?? c.text;
+  const fg = { filled: c.onAccent, stop: c.onStop, record: c.onRecordControl }[variant] ?? c.text;
 
   return (
     <Pressable
@@ -48,7 +51,7 @@ export default function IconButton({
       >
         <Icon name={icon} size={iconSize} color={fg} filled={filled} />
       </View>
-      {label ? <Text style={[type.smallStrong, styles.label]}>{label}</Text> : null}
+      {label ? <Text style={[type.smallStrong, styles.label, labelStyle]}>{label}</Text> : null}
     </Pressable>
   );
 }

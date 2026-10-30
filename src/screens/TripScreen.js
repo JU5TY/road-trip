@@ -4,22 +4,26 @@ import { ActivityIndicator, Alert, Pressable, Text, View } from 'react-native';
 
 import ActionSheet from '../components/ActionSheet';
 import ChartsCard from '../components/charts/ChartsCard';
+import TripPhotos from '../components/photos/TripPhotos';
+import CountriesSection from '../components/countries/CountriesSection';
 import DetailLayout from '../components/detail/DetailLayout';
 import { routeMarkers, stopMarkerKey } from '../components/detail/mapMarkers';
 import Timeline from '../components/detail/Timeline';
 import IconicRoadsSection from '../components/roads/IconicRoadsSection';
-import { DetailsRows, HeroStats, TitleBlock } from '../components/detail/TripStats';
+import { DetailsRows, HeroStats, TitleBlock, vehicleRows } from '../components/detail/TripStats';
 import EditTripSheet from '../components/EditTripSheet';
 import MoveDriveSheet from '../components/MoveDriveSheet';
 import RouteMap from '../components/RouteMap';
 import Icon from '../components/ui/Icon';
 import SectionHeader from '../components/ui/SectionHeader';
 import { useSettings } from '../context/SettingsContext';
+import { usePhotos } from '../hooks/usePhotos';
 import { useStyles, useTheme } from '../hooks/useTheme';
 import { ensureDrivePlaces } from '../services/placeService';
 import { getDrivePoints } from '../storage/driveStorage';
 import { getTripCompletions } from '../storage/roadStorage';
 import { deleteTrip, getTrip, updateTrip } from '../storage/tripStorage';
+import { getVehicleNames } from '../storage/vehicleStorage';
 import { dayBadgeFor, dayColorFor, type } from '../theme';
 import {
   formatDate,
@@ -31,6 +35,8 @@ import {
 } from '../utils/format';
 import { averageMovingSpeed, downsample } from '../utils/geoMath';
 import { getRoad } from '../utils/iconicRoads';
+import { comingSoon } from '../utils/comingSoon';
+import { countryRows } from '../utils/countries';
 import { buildTripTimeline } from '../utils/timeline';
 import {
   groupIntoDays,
@@ -43,8 +49,8 @@ import {
 // Keep the whole-trip map responsive however many drives it has.
 const MAX_MAP_POINTS = 3000;
 
-/** One day in the Days list. A day with several drives lists each drive under it. */
-function DayRow({ day, units, multiDay }) {
+/** One day in the Drives list. A day with several drives lists each drive under it. */
+function DayRow({ day, units, multiDay, isLast }) {
   // A day with a drive whose times are hidden (it's just an Iconic Road) shows no times.
   const hideTimes = day.drives.some((d) => d.stats.timesHidden);
   const { c } = useTheme();
@@ -64,7 +70,7 @@ function DayRow({ day, units, multiDay }) {
   ].join(' · ');
 
   const row = (
-    <View style={styles.dayRow}>
+    <View style={[styles.dayRow, !isLast && day.drives.length === 1 && styles.divider]}>
       <View style={[styles.badge, { backgroundColor: badgeBg }]}>
         <Text style={[type.bodyStrong, { color: badgeFg, fontFamily: type.navActive.fontFamily }]}>
           {day.number}
@@ -122,9 +128,15 @@ export default function TripScreen() {
   const styles = useStyles(makeStyles);
   const [trip, setTrip] = useState(null);
   const [completions, setCompletions] = useState([]); // Iconic Roads on this trip
+  const [vehicleNames, setVehicleNames] = useState(new Map());
   const [pointsByDrive, setPointsByDrive] = useState(null); // driveId -> points
   const [missing, setMissing] = useState(false);
   const [menu, setMenu] = useState(null); // null | 'options' | 'edit' | 'move'
+  const {
+    photos,
+    access: photoAccess,
+    allow: allowPhotos,
+  } = usePhotos(trip?.drives[0]?.startedAt, trip?.drives.at(-1)?.endedAt);
   const scrollRef = useRef(null);
   const mapRef = useRef(null);
   const [highlight, setHighlight] = useState(null); // point under the finger on a chart
@@ -146,11 +158,13 @@ export default function TripScreen() {
           setMissing(true);
           return;
         }
-        const [all, roads] = await Promise.all([
+        const [all, roads, names] = await Promise.all([
           Promise.all(t.drives.map((d) => getDrivePoints(d.id))),
           getTripCompletions(t.id),
+          getVehicleNames(),
         ]);
         if (cancelled) return;
+        setVehicleNames(names);
         setTrip(t);
         setCompletions(roads);
         setPointsByDrive(new Map(t.drives.map((d, i) => [d.id, all[i]])));
@@ -292,7 +306,9 @@ export default function TripScreen() {
       map={map}
       actions={[
         { icon: 'edit', label: 'Edit trip', onPress: () => setMenu('edit') },
+        { icon: 'download', label: 'Export', onPress: () => comingSoon('Exporting trips') },
         { icon: 'more_horiz', label: 'More options', onPress: () => setMenu('options') },
+        { icon: 'ios_share', label: 'Share', primary: true, onPress: () => comingSoon('Sharing') },
       ]}
     >
       <ActionSheet
@@ -335,7 +351,7 @@ export default function TripScreen() {
         kicker={
           allHidden && days.length === 1
             ? formatDayDate(first.startedAt).toUpperCase()
-            : tripKicker(first.startedAt, last.endedAt, days.length)
+            : tripKicker(first.startedAt, last.endedAt, days.length, { withYear: true })
         }
         title={title}
         subtitle={subtitle}
@@ -348,7 +364,6 @@ export default function TripScreen() {
         timesHidden={allHidden}
         roadCount={roadsShown.length ? new Set(roadsShown.map((r) => r.roadId)).size : 0}
       />
-      <IconicRoadsSection completions={roadsShown} dayOf={dayOf} />
       {days.length === 1 ? (
         <Timeline
           items={timeline}
@@ -360,18 +375,42 @@ export default function TripScreen() {
             completedAt: r.completedAt,
           }))}
           hideTimes={hiddenCount > 0}
+          photos={photos}
         />
       ) : null}
-      <DetailsRows
-        stats={allHidden ? summary : timeSummary}
-        elapsedMs={timeSummary.elapsedMs}
+      {/* A trip of one drive would only repeat itself here. */}
+      {trip.drives.length > 1 ? (
+        <>
+          <SectionHeader title="Drives" />
+          <View style={styles.group}>
+            {days.map((day, i) => (
+              <DayRow
+                key={day.number}
+                day={day}
+                units={units}
+                multiDay={days.length > 1}
+                isLast={i === days.length - 1}
+              />
+            ))}
+          </View>
+        </>
+      ) : null}
+      <TripPhotos
+        photos={photos}
+        access={photoAccess}
+        allow={allowPhotos}
+        hideTimes={hiddenCount > 0}
+      />
+      <IconicRoadsSection completions={roadsShown} dayOf={dayOf} />
+      <CountriesSection
+        rows={countryRows(
+          trip.drives,
+          days.length > 1
+            ? { dayOf: (d) => days.find((day) => day.drives.includes(d))?.number ?? 1 }
+            : {}
+        )}
         units={units}
-        timesHidden={allHidden}
-        hiddenNote={
-          hiddenCount > 0 && !allHidden
-            ? `Times leave out ${hiddenCount === 1 ? 'a drive' : `${hiddenCount} drives`} that ${hiddenCount === 1 ? 'is' : 'are'} just an Iconic Road, for safety.`
-            : null
-        }
+        scope="trip"
       />
       <ChartsCard
         tracks={tracks}
@@ -380,15 +419,19 @@ export default function TripScreen() {
         onScrub={setHighlight}
         speedHidden={hiddenCount > 0}
       />
-      {/* A trip of one drive would only repeat itself here. */}
-      {trip.drives.length > 1 ? (
-        <>
-          <SectionHeader title="Days" style={styles.daysHeader} />
-          {days.map((day) => (
-            <DayRow key={day.number} day={day} units={units} multiDay={days.length > 1} />
-          ))}
-        </>
-      ) : null}
+      <DetailsRows
+        stats={allHidden ? summary : timeSummary}
+        elapsedMs={timeSummary.elapsedMs}
+        units={units}
+        timesHidden={allHidden}
+        subtitle="Whole trip"
+        extraRows={vehicleRows(trip.drives, vehicleNames)}
+        hiddenNote={
+          hiddenCount > 0 && !allHidden
+            ? `Times leave out ${hiddenCount === 1 ? 'a drive' : `${hiddenCount} drives`} that ${hiddenCount === 1 ? 'is' : 'are'} just an Iconic Road, for safety.`
+            : null
+        }
+      />
     </DetailLayout>
   );
 }
@@ -396,18 +439,19 @@ export default function TripScreen() {
 const makeStyles = (c) => ({
   screen: { flex: 1, backgroundColor: c.background },
   center: { alignItems: 'center', justifyContent: 'center' },
-  daysHeader: { marginBottom: 4 },
+  group: { paddingHorizontal: 12, borderRadius: 12, backgroundColor: c.card, ...c.cardShadow },
   dayRow: {
     flexDirection: 'row',
     alignItems: 'center',
     gap: 16,
-    paddingVertical: 12,
+    minHeight: 68,
     paddingHorizontal: 4,
   },
+  divider: { borderBottomWidth: 1, borderBottomColor: c.divider },
   badge: {
-    width: 44,
-    height: 44,
-    borderRadius: 14,
+    width: 40,
+    height: 40,
+    borderRadius: 20,
     alignItems: 'center',
     justifyContent: 'center',
   },

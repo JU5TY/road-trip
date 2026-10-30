@@ -1,22 +1,53 @@
 import Constants from 'expo-constants';
 import { router } from 'expo-router';
 import { useState } from 'react';
-import { ScrollView, Text } from 'react-native';
+import { Alert, ScrollView, Text, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import ActionSheet from '../components/ActionSheet';
+import VehicleSheet from '../components/VehicleSheet';
+import PremiumCard from '../components/PremiumCard';
+import Icon from '../components/ui/Icon';
 import ListRow from '../components/ui/ListRow';
 import Switch from '../components/ui/Switch';
 import SectionHeader from '../components/ui/SectionHeader';
 import { useSettings } from '../context/SettingsContext';
 import { useRoadTotals } from '../hooks/useRoadTotals';
-import { useStyles } from '../hooks/useTheme';
+import { useStyles, useTheme } from '../hooks/useTheme';
+import { useVehicles } from '../hooks/useVehicles';
 import { BREAK_REMINDER_OPTIONS } from '../storage/settingsStorage';
+import { addVehicle, deleteVehicle, renameVehicle } from '../storage/vehicleStorage';
 import { spacing, type } from '../theme';
-import { formatBreakReminder } from '../utils/format';
+import { comingSoon } from '../utils/comingSoon';
+import { distanceParts, formatBreakReminder } from '../utils/format';
+import { COUNTRIES_ATTRIBUTION } from '../utils/countries';
 import { ICONIC_ROADS, ROADS_ATTRIBUTION } from '../utils/iconicRoads';
 
 const UNIT_LABELS = { metric: 'Kilometres', imperial: 'Miles' };
+const THEMES = [
+  ['system', 'System default'],
+  ['light', 'Light'],
+  ['dark', 'Dark'],
+];
+
+/** The small blue "Premium" tag on rows that will need Premium. */
+function PremiumTag() {
+  const { c } = useTheme();
+  const styles = useStyles(makeStyles);
+  return (
+    <View style={styles.tag}>
+      <Icon name="workspace_premium" size={14} color={c.onAccentContainer} />
+      <Text style={[type.caps, styles.tagText]}>Premium</Text>
+    </View>
+  );
+}
+
+/** "Default · 1,020 mi · 6 trips" */
+function vehicleSubtitle(v, units) {
+  const d = distanceParts(v.distanceM, units);
+  const parts = [`${d.value} ${d.unit}`, `${v.tripCount} ${v.tripCount === 1 ? 'trip' : 'trips'}`];
+  return (v.isDefault ? ['Default', ...parts] : parts).join(' · ');
+}
 
 /** The "You" tab: preferences and about. Every setting is the same row style. */
 export default function SettingsScreen() {
@@ -27,13 +58,39 @@ export default function SettingsScreen() {
     setBreakReminderMinutes,
     showIconicRoads,
     setShowIconicRoads,
+    theme,
+    setTheme,
     replayOnboarding,
   } = useSettings();
+  const { c } = useTheme();
   const totals = useRoadTotals();
   const completed = totals ? ICONIC_ROADS.filter((r) => totals.has(r.id)).length : 0;
   const styles = useStyles(makeStyles);
   const insets = useSafeAreaInsets();
   const [picking, setPicking] = useState(false);
+  const version = Constants.expoConfig?.version ?? '—';
+  const [vehicles, reloadVehicles] = useVehicles();
+  const [editing, setEditing] = useState(null); // null | 'new' | vehicle
+
+  const saveVehicle = async (name) => {
+    try {
+      if (editing === 'new') await addVehicle(name);
+      else await renameVehicle(editing.id, name);
+    } catch (err) {
+      console.warn('[garage] save failed', err);
+    }
+    setEditing(null);
+    reloadVehicles();
+  };
+  const removeVehicle = async () => {
+    try {
+      await deleteVehicle(editing.id);
+    } catch (err) {
+      console.warn('[garage] delete failed', err);
+    }
+    setEditing(null);
+    reloadVehicles();
+  };
 
   return (
     <ScrollView
@@ -55,10 +112,50 @@ export default function SettingsScreen() {
         }))}
         onClose={() => setPicking(false)}
       />
+      <VehicleSheet
+        visible={editing !== null}
+        vehicle={editing === 'new' ? null : editing}
+        onSave={saveVehicle}
+        onDelete={removeVehicle}
+        onClose={() => setEditing(null)}
+      />
 
       <Text style={[type.headline, styles.h1]} role="heading">
         You
       </Text>
+      <PremiumCard />
+
+      <SectionHeader variant="label" title="Garage" />
+      {(vehicles ?? []).map((v) => (
+        <ListRow
+          key={v.id}
+          leading={
+            <View style={styles.well}>
+              <Icon name="directions_car" filled size={22} color={c.onAccentContainer} />
+            </View>
+          }
+          title={v.name}
+          subtitle={vehicleSubtitle(v, units)}
+          onPress={() => setEditing(v)}
+          style={styles.vehicleRow}
+          divider
+        />
+      ))}
+      {vehicles ? (
+        <ListRow
+          leading={
+            <View style={styles.addIcon}>
+              <Icon name="add" size={24} color={c.accent} />
+            </View>
+          }
+          title={vehicles.length ? 'Add another vehicle' : 'Add your vehicle'}
+          titleStyle={styles.addTitle}
+          right={vehicles.length ? <PremiumTag /> : null}
+          onPress={
+            vehicles.length ? () => comingSoon('More than one vehicle') : () => setEditing('new')
+          }
+        />
+      ) : null}
 
       <SectionHeader variant="label" title="Iconic Roads" />
       <ListRow
@@ -98,19 +195,57 @@ export default function SettingsScreen() {
         divider
       />
       <ListRow
+        icon="contrast"
+        title="Theme"
+        value={THEMES.find(([k]) => k === theme)?.[1]}
+        onPress={() => {
+          const i = THEMES.findIndex(([k]) => k === theme);
+          setTheme(THEMES[(i + 1) % THEMES.length][0]);
+        }}
+        divider
+      />
+      <ListRow
         icon="local_cafe"
         title="Break reminder"
         value={formatBreakReminder(breakReminderMinutes)}
         onPress={() => setPicking(true)}
       />
 
+      <SectionHeader variant="label" title="Backup" />
+      <ListRow
+        icon="cloud_upload"
+        title="Back up and restore"
+        right={<PremiumTag />}
+        onPress={() => comingSoon('Back up and restore')}
+        divider
+      />
+      <ListRow
+        icon="download"
+        title="Export trips (GPX)"
+        right={<PremiumTag />}
+        onPress={() => comingSoon('GPX export')}
+      />
+
       <SectionHeader variant="label" title="About" />
-      <ListRow icon="lock" title="Privacy" subtitle="Your trips stay on this phone" divider />
-      <ListRow icon="map" title="Map data" subtitle={ROADS_ATTRIBUTION} divider />
+      <ListRow
+        icon="lock"
+        title="Privacy"
+        onPress={() =>
+          Alert.alert(
+            'Privacy',
+            'Your trips stay on this phone. Your location and photos are never uploaded or shared.'
+          )
+        }
+        divider
+      />
       <ListRow
         icon="info"
         title="Version"
-        value={Constants.expoConfig?.version ?? '—'}
+        value={version}
+        chevron={false}
+        onPress={() =>
+          Alert.alert(`Road Trip ${version}`, `${ROADS_ATTRIBUTION}\n${COUNTRIES_ATTRIBUTION}`)
+        }
         divider={__DEV__}
       />
       {__DEV__ ? (
@@ -127,7 +262,29 @@ export default function SettingsScreen() {
 
 const makeStyles = (c) => ({
   screen: { flex: 1, backgroundColor: c.background },
-  content: { paddingHorizontal: spacing.md, paddingBottom: spacing.xl },
+  content: { paddingHorizontal: spacing.md, paddingBottom: 112 },
   h1: { color: c.text, marginHorizontal: 4, marginTop: 8, height: 56, textAlignVertical: 'center' },
   note: { color: c.textMuted, marginHorizontal: 4, marginTop: 4 },
+  well: {
+    width: 40,
+    height: 40,
+    borderRadius: 20,
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: c.accentContainer,
+  },
+  addIcon: { width: 40, alignItems: 'center' },
+  vehicleRow: { minHeight: 64 },
+  addTitle: { color: c.accent, fontFamily: type.bodyStrong.fontFamily },
+  tag: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+    paddingVertical: 2,
+    paddingLeft: 6,
+    paddingRight: 8,
+    borderRadius: 6,
+    backgroundColor: c.accentContainer,
+  },
+  tagText: { color: c.onAccentContainer, letterSpacing: 0 },
 });

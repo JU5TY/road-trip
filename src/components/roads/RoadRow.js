@@ -11,8 +11,8 @@ import Icon from '../ui/Icon';
 export default function RoadRow({ name, subtitle, completed, onPress, chevron = false }) {
   const { c } = useTheme();
   const styles = useStyles(makeStyles);
-  const fg = completed ? c.onAccentContainer : c.text;
-  const muted = completed ? c.accentContainerMuted : c.textMuted;
+  const fg = completed ? c.onRoadContainer : c.text;
+  const muted = completed ? c.roadContainerMuted : c.textMuted;
   return (
     <Pressable
       onPress={onPress}
@@ -27,7 +27,7 @@ export default function RoadRow({ name, subtitle, completed, onPress, chevron = 
       <Icon
         name={completed ? 'verified' : 'route'}
         size={24}
-        color={completed ? c.onAccentContainer : c.textMuted}
+        color={completed ? c.onRoadContainer : c.textMuted}
       />
       <View style={styles.text}>
         <Text style={[type.bodyStrong, { color: fg }]} numberOfLines={1}>
@@ -43,8 +43,8 @@ export default function RoadRow({ name, subtitle, completed, onPress, chevron = 
 }
 
 const makeStyles = (c) => ({
-  row: { flexDirection: 'row', alignItems: 'center', gap: 16, borderRadius: 20 },
-  completed: { backgroundColor: c.accentContainer, paddingVertical: 12, paddingHorizontal: 16 },
+  row: { flexDirection: 'row', alignItems: 'center', gap: 16, borderRadius: 12 },
+  completed: { backgroundColor: c.roadContainer, paddingVertical: 12, paddingHorizontal: 16 },
   notYet: {
     backgroundColor: c.outlinedRow,
     borderWidth: 1,

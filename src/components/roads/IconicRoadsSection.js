@@ -6,13 +6,22 @@ import { completedLabel, dayLabel, getRoad } from '../../utils/iconicRoads';
 import SectionHeader from '../ui/SectionHeader';
 import RoadRow from './RoadRow';
 
+/** Day page wording: "Completed twice today · 3 times in all", "Completed · 1st time". */
+function dayPageLabel(count, total, today) {
+  const times =
+    count === 1 ? 'Completed' : count === 2 ? 'Completed twice' : `Completed ${count} times`;
+  const all = total <= 1 ? '1st time' : `${total} times in all`;
+  return `${times}${today ? ' today' : ''} · ${all}`;
+}
+
 /**
- * "Iconic Roads" on a Trip or Day page: one row per road, counting completions
- * on this trip/day ("Completed 2 times · Day 3"). `dayOf(driveId)` gives the day
- * number for the suffix; leave it out on a Day page. Renders nothing when
- * there are no completions.
+ * "Iconic Roads" on a Trip or Day page: one row per road.
+ * Trip page: pass `dayOf(driveId)`, for "Completed 2 times · Day 3".
+ * Day page: pass `totals` (getRoadTotals) and `today` (the drive was today),
+ * for "Completed twice today · 3 times in all".
+ * Renders nothing when there are no completions.
  */
-export default function IconicRoadsSection({ completions, dayOf }) {
+export default function IconicRoadsSection({ completions, dayOf, totals, today = false }) {
   const styles = useStyles(makeStyles);
   const groups = new Map();
   for (const c of completions) {
@@ -38,7 +47,11 @@ export default function IconicRoadsSection({ completions, dayOf }) {
             completed
             name={road.name}
             subtitle={
-              dayOf ? `${completedLabel(count)} · ${dayLabel(days)}` : completedLabel(count)
+              dayOf
+                ? `${completedLabel(count)} · ${dayLabel(days)}`
+                : totals
+                  ? dayPageLabel(count, totals.get(road.id)?.count ?? count, today)
+                  : completedLabel(count)
             }
             onPress={() => router.push(`/roads/${road.id}`)}
           />

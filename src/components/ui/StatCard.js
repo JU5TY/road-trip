@@ -6,10 +6,9 @@ import Icon from './Icon';
 
 /**
  * Stat tile from the Trip/Record bento grid.
- * tone: 'surface' (grey) | 'accent' (green) | 'warning' (amber, break due).
+ * tone: 'surface' (white, blue number) | 'accent' (wide card, blue icon well) | 'warning' (amber, break due).
  * layout: 'tile' (icon over value over label) | 'wide' (icon well left, label
  * over a larger value: the full-width Driving time card).
- * `notch` squares off the bottom-left corner, as on the last tile of a grid.
  */
 export default function StatCard({
   icon,
@@ -18,14 +17,15 @@ export default function StatCard({
   label,
   tone = 'surface',
   layout = 'tile',
-  notch = false,
   style,
 }) {
   const { c } = useTheme();
   const styles = useStyles(makeStyles);
   const tc = {
-    surface: { bg: c.surface, fg: c.text, muted: c.textMuted, icon: c.accent },
-    accent: { bg: c.statAccent, fg: c.onStatAccent, muted: c.onStatAccent, icon: c.statAccentIcon },
+    // White card: grey icon, blue number.
+    surface: { bg: c.surface, fg: c.onStatAccent, muted: c.textMuted, icon: c.textMuted },
+    // Wide Driving time card: blue icon in a round blue well.
+    accent: { bg: c.statAccent, fg: c.onStatAccent, muted: c.textMuted, icon: c.statAccentIcon },
     warning: {
       bg: c.warningContainer,
       fg: c.onWarningContainer,
@@ -33,13 +33,8 @@ export default function StatCard({
       icon: c.onWarningContainer,
     },
   }[tone];
-  const card = [styles.card, { backgroundColor: tc.bg }, notch && styles.notch, style];
-  const labelStyle = [
-    type.small,
-    { color: tc.muted },
-    tone === 'accent' && styles.soft,
-    tone === 'warning' && styles.strongLabel,
-  ];
+  const card = [styles.card, { backgroundColor: tc.bg }, tone !== 'warning' && c.cardShadow, style];
+  const labelStyle = [type.small, { color: tc.muted }, tone === 'warning' && styles.strongLabel];
 
   if (layout === 'wide') {
     return (
@@ -48,11 +43,11 @@ export default function StatCard({
         accessible
         accessibilityLabel={`${label}: ${value}${unit ?? ''}`}
       >
-        <View style={[styles.well, tone === 'accent' && { backgroundColor: c.statAccentIconWell }]}>
+        <View style={[styles.well, { backgroundColor: c.statAccentIconWell }]}>
           <Icon name={icon} size={26} color={tc.icon} />
         </View>
         <View style={styles.flex}>
-          <Text style={labelStyle}>{label}</Text>
+          <Text style={[labelStyle, styles.wideLabel]}>{label}</Text>
           <Text style={[type.statLarge, { color: tc.fg }]} numberOfLines={1}>
             {value}
             {unit ? <Text style={[type.statUnit, { color: tc.muted }]}> {unit}</Text> : null}
@@ -82,11 +77,10 @@ export default function StatCard({
 
 const makeStyles = () => ({
   card: { borderRadius: radius.card, padding: 18 },
-  notch: { borderBottomLeftRadius: radius.sm },
   wide: { flexDirection: 'row', alignItems: 'center', gap: 16, paddingHorizontal: 20 },
-  well: { width: 48, height: 48, borderRadius: 16, alignItems: 'center', justifyContent: 'center' },
+  well: { width: 48, height: 48, borderRadius: 24, alignItems: 'center', justifyContent: 'center' },
   flex: { flex: 1 },
   value: { marginTop: 10 },
-  soft: { opacity: 0.85 },
   strongLabel: { fontFamily: type.smallStrong.fontFamily },
+  wideLabel: { fontSize: 14, lineHeight: 20 },
 });

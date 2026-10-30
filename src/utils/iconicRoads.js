@@ -173,3 +173,21 @@ export function dayLabel(dayNumbers) {
   const consecutive = days.every((d, i) => i === 0 || d === days[i - 1] + 1);
   return consecutive ? `Days ${days[0]}–${days.at(-1)}` : `Days ${days.join(', ')}`;
 }
+
+/**
+ * How twisty a road is, from the total turning along its line per km:
+ * "Gentle", "Twisty" or "Very twisty" (Glen Coe ~80°/km, Bealach na Bà ~280°/km).
+ */
+export function bendsLabel(road) {
+  const line = road.line;
+  const heading = (a, b) =>
+    Math.atan2((b[1] - a[1]) * Math.cos(toRad(a[0])), b[0] - a[0]) / (Math.PI / 180);
+  let turn = 0;
+  for (let i = 2; i < line.length; i++) {
+    const t = heading(line[i - 1], line[i]) - heading(line[i - 2], line[i - 1]);
+    turn += Math.abs(((t + 540) % 360) - 180);
+  }
+  const perKm = turn / (road.lengthM / 1000);
+  if (perKm < 120) return 'Gentle';
+  return perKm < 220 ? 'Twisty' : 'Very twisty';
+}

@@ -4,23 +4,29 @@ import { ActivityIndicator, Alert, View } from 'react-native';
 
 import ActionSheet from '../components/ActionSheet';
 import ChartsCard from '../components/charts/ChartsCard';
+import CountriesSection from '../components/countries/CountriesSection';
 import DetailLayout from '../components/detail/DetailLayout';
 import { routeMarkers, stopMarkerKey } from '../components/detail/mapMarkers';
 import Timeline from '../components/detail/Timeline';
 import IconicRoadsSection from '../components/roads/IconicRoadsSection';
-import { DetailsRows, HeroStats, TitleBlock } from '../components/detail/TripStats';
+import { DetailsRows, HeroStats, TitleBlock, vehicleRows } from '../components/detail/TripStats';
 import MoveDriveSheet from '../components/MoveDriveSheet';
 import RouteMap from '../components/RouteMap';
 import { useSettings } from '../context/SettingsContext';
+import { usePhotos } from '../hooks/usePhotos';
+import { useRoadTotals } from '../hooks/useRoadTotals';
 import { useStyles, useTheme } from '../hooks/useTheme';
 import { ensureDrivePlaces } from '../services/placeService';
 import { deleteDrive, getDrive, getDrivePoints } from '../storage/driveStorage';
 import { getDriveCompletions } from '../storage/roadStorage';
 import { getTrip } from '../storage/tripStorage';
+import { getVehicleNames } from '../storage/vehicleStorage';
 import { dayColorFor } from '../theme';
+import { countryRows } from '../utils/countries';
 import { formatDate, formatDayDate, formatTime } from '../utils/format';
 import { averageMovingSpeed, downsample } from '../utils/geoMath';
 import { getRoad } from '../utils/iconicRoads';
+import { comingSoon } from '../utils/comingSoon';
 import { buildDriveTimeline } from '../utils/timeline';
 import {
   dayNumberFor,
@@ -40,8 +46,11 @@ export default function DriveScreen() {
   const [points, setPoints] = useState(null);
   const [trip, setTrip] = useState(null);
   const [completions, setCompletions] = useState([]); // Iconic Roads on this drive
+  const [vehicleNames, setVehicleNames] = useState(new Map());
   const [menu, setMenu] = useState(null); // null | 'options' | 'move'
   const [highlight, setHighlight] = useState(null); // point under the finger on a chart
+  const { photos } = usePhotos(drive?.startedAt, drive?.endedAt);
+  const roadTotals = useRoadTotals();
   const scrollRef = useRef(null);
   const mapRef = useRef(null);
 
@@ -50,12 +59,14 @@ export default function DriveScreen() {
     (async () => {
       const d = await getDrive(Number(id));
       if (cancelled || !d) return;
-      const [p, t, roads] = await Promise.all([
+      const [p, t, roads, names] = await Promise.all([
         getDrivePoints(d.id),
         getTrip(d.tripId),
         getDriveCompletions(d.id),
+        getVehicleNames(),
       ]);
       if (cancelled) return;
+      setVehicleNames(names);
       setDrive(d);
       setPoints(p);
       setTrip(t);
@@ -72,6 +83,10 @@ export default function DriveScreen() {
     () =>
       points ? downsample(points).map(({ latitude, longitude }) => ({ latitude, longitude })) : [],
     [points]
+  );
+  const chartMarkers = useMemo(
+    () => (drive?.countries ?? []).slice(1).map((v) => ({ time: v.enteredAt, label: 'Border' })),
+    [drive]
   );
   const timeline = useMemo(
     () => (drive && points ? buildDriveTimeline(drive, points) : []),
@@ -101,6 +116,7 @@ export default function DriveScreen() {
   // A drive that is just an Iconic Road (starts and ends at its gates) shows no times.
   const hideTimes = Boolean(drive.stats.timesHidden);
   const roadsShown = showIconicRoads ? completions : [];
+  const countries = countryRows([drive]);
 
   const showStop = (item) => {
     scrollRef.current?.scrollTo({ y: 0, animated: true });
@@ -140,7 +156,22 @@ export default function DriveScreen() {
     <DetailLayout
       scrollRef={scrollRef}
       map={map}
-      actions={[{ icon: 'more_horiz', label: 'More options', onPress: () => setMenu('options') }]}
+      mapHeight={hideTimes ? 400 : 380}
+      actions={
+        // A drive that is just an Iconic Road can't be exported or shared (it would give its time away).
+        hideTimes
+          ? [{ icon: 'more_horiz', label: 'More options', onPress: () => setMenu('options') }]
+          : [
+              { icon: 'download', label: 'Export', onPress: () => comingSoon('Exporting drives') },
+              { icon: 'more_horiz', label: 'More options', onPress: () => setMenu('options') },
+              {
+                icon: 'ios_share',
+                label: 'Share',
+                primary: true,
+                onPress: () => comingSoon('Sharing'),
+              },
+            ]
+      }
     >
       <ActionSheet
         visible={menu === 'options'}
@@ -173,8 +204,8 @@ export default function DriveScreen() {
         units={units}
         timesHidden={hideTimes}
         roadCount={new Set(roadsShown.map((r) => r.roadId)).size}
+        countryCount={countries.length}
       />
-      <IconicRoadsSection completions={roadsShown} />
       <Timeline
         items={timeline}
         color={color}
@@ -185,19 +216,29 @@ export default function DriveScreen() {
           completedAt: r.completedAt,
         }))}
         hideTimes={hideTimes}
+        photos={photos}
       />
-      <DetailsRows
-        stats={drive.stats}
-        elapsedMs={driveElapsedMs(drive)}
-        units={units}
-        timesHidden={hideTimes}
+      <IconicRoadsSection
+        completions={roadsShown}
+        totals={roadTotals ?? new Map()}
+        today={new Date(drive.startedAt).toDateString() === new Date().toDateString()}
       />
+      <CountriesSection rows={countries} units={units} scope="drive" />
       <ChartsCard
         tracks={[{ key: 'route', color, points }]}
         units={units}
         avgSpeedMps={averageMovingSpeed(drive.stats)}
         onScrub={setHighlight}
         speedHidden={hideTimes}
+        markers={chartMarkers}
+      />
+      <DetailsRows
+        stats={drive.stats}
+        elapsedMs={driveElapsedMs(drive)}
+        units={units}
+        timesHidden={hideTimes}
+        subtitle="This drive"
+        extraRows={vehicleRows([drive], vehicleNames)}
       />
     </DetailLayout>
   );

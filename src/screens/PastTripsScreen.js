@@ -197,7 +197,7 @@ const makeStyles = (c) => ({
     alignItems: 'center',
     justifyContent: 'center',
   },
-  emptyTitle: { color: c.text, fontSize: 22, marginTop: 24 },
+  emptyTitle: { color: c.text, fontFamily: type.section.fontFamily, fontSize: 22, marginTop: 24 },
   emptyBody: { textAlign: 'center', marginTop: 8 },
   emptyButton: { marginTop: 24, paddingHorizontal: 24 },
 });

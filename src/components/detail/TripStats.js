@@ -23,8 +23,8 @@ export function TitleBlock({ kicker, title, subtitle, notes, onPress }) {
       disabled={!onPress}
       accessibilityRole={onPress ? 'button' : undefined}
     >
-      <Text style={[type.smallStrong, styles.kicker]}>{kicker}</Text>
-      <Text style={[type.headline, styles.title]}>{title}</Text>
+      <Text style={[type.kicker, styles.kicker]}>{kicker}</Text>
+      <Text style={[type.title, styles.title]}>{title}</Text>
       {subtitle ? <Text style={[type.body, styles.subtitle]}>{subtitle}</Text> : null}
       {notes ? <Text style={[type.body, styles.notes]}>{notes}</Text> : null}
     </Pressable>
@@ -35,9 +35,10 @@ export function TitleBlock({ kicker, title, subtitle, notes, onPress }) {
  * Hero distance, Iconic Roads and rest-stops chips, and the bento grid (Driving
  * time, Highest point, Elevation gain). `stats` is a drive's stats or a
  * summarizeDrives() result. `timesHidden` swaps Driving time for a note (a
- * drive that starts and ends at an Iconic Road); `roadCount` adds the chip.
+ * drive that starts and ends at an Iconic Road); `roadCount` and `countryCount`
+ * (shown from 2) add chips.
  */
-export function HeroStats({ stats, units, timesHidden = false, roadCount = 0 }) {
+export function HeroStats({ stats, units, timesHidden = false, roadCount = 0, countryCount = 0 }) {
   const { c } = useTheme();
   const styles = useStyles(makeStyles);
   const distance = distanceParts(stats.distanceM, units);
@@ -54,11 +55,11 @@ export function HeroStats({ stats, units, timesHidden = false, roadCount = 0 }) 
         <Text style={styles.heroValue}>{distance.value}</Text>
         <Text style={styles.heroUnit}>{distance.unit}</Text>
       </View>
-      {stats.stopCount > 0 || roadCount > 0 ? (
+      {stats.stopCount > 0 || roadCount > 0 || countryCount > 1 ? (
         <View style={styles.chips}>
           {roadCount > 0 ? (
             <View style={[styles.chip, styles.chipRoads]}>
-              <Icon name="verified" size={18} color={c.onAccentContainer} />
+              <Icon name="verified" size={18} color={c.onRoadContainer} />
               <Text style={[type.label, styles.chipRoadsText]}>
                 {roadCount} {roadCount === 1 ? 'Iconic Road' : 'Iconic Roads'}
               </Text>
@@ -70,6 +71,12 @@ export function HeroStats({ stats, units, timesHidden = false, roadCount = 0 }) 
               <Text style={[type.label, styles.chipText]}>
                 {stats.stopCount} {stats.stopCount === 1 ? 'stop' : 'stops'}
               </Text>
+            </View>
+          ) : null}
+          {countryCount > 1 ? (
+            <View style={styles.chip}>
+              <Icon name="public" size={18} color={c.textMuted} />
+              <Text style={[type.label, styles.chipText]}>{countryCount} countries</Text>
             </View>
           ) : null}
         </View>
@@ -96,7 +103,6 @@ export function HeroStats({ stats, units, timesHidden = false, roadCount = 0 }) 
           />
           <StatCard
             style={styles.half}
-            notch
             icon="trending_up"
             label="Elevation gain"
             value={gain.value}
@@ -119,7 +125,7 @@ function TimesHiddenCard() {
       </View>
       <View style={styles.flex}>
         <Text style={[type.bodyStrong, styles.hiddenTitle]}>Times hidden for safety</Text>
-        <Text style={[type.body, styles.subtitleText]}>
+        <Text style={[type.body, styles.subtitleText, styles.hiddenText]}>
           {"This drive starts and ends at an Iconic Road, so its times and speeds aren't shown."}
         </Text>
       </View>
@@ -128,28 +134,61 @@ function TimesHiddenCard() {
 }
 
 /**
+ * The "Vehicle" Details row for some drives, as extraRows: the vehicle's name,
+ * or "2 vehicles" when they differ. None when no drive names a vehicle.
+ */
+export function vehicleRows(drives, names) {
+  const used = [...new Set(drives.map((d) => names.get(d.vehicleId)).filter(Boolean))];
+  if (used.length === 0) return [];
+  return [['directions_car', 'Vehicle', used.length === 1 ? used[0] : `${used.length} vehicles`]];
+}
+
+/**
  * "Details" rows: time first, speed last (Max speed stays low-key). With
  * `timesHidden` only the rest-stop count is left. `hiddenNote` explains that
  * some drives' times were left out of a trip's totals.
  */
-export function DetailsRows({ stats, elapsedMs, units, timesHidden = false, hiddenNote }) {
+export function DetailsRows({
+  stats,
+  elapsedMs,
+  units,
+  timesHidden = false,
+  hiddenNote,
+  subtitle,
+  extraRows = [],
+}) {
   const styles = useStyles(makeStyles);
   if (timesHidden) {
     return (
       <>
-        <SectionHeader title="Details" style={styles.detailsHeader} />
-        <ListRow
-          icon="local_cafe"
-          title="Rest stops"
-          value={stats.stopCount > 0 ? String(stats.stopCount) : 'None'}
-          strongValue
-        />
+        <SectionHeader title="Details" subtitle={subtitle} />
+        <View style={styles.group}>
+          {extraRows.map(([icon, title, value]) => (
+            <ListRow
+              key={title}
+              icon={icon}
+              title={title}
+              value={value}
+              strongValue
+              divider
+              dense
+            />
+          ))}
+          <ListRow
+            icon="local_cafe"
+            title="Rest stops"
+            value={stats.stopCount > 0 ? String(stats.stopCount) : 'None'}
+            strongValue
+            dense
+          />
+        </View>
       </>
     );
   }
   // Drives recorded before this stat existed don't have it.
   const longest = stats.longestStintMs == null ? '—' : formatDurationShort(stats.longestStintMs);
   const rows = [
+    ...extraRows,
     ['schedule', 'Elapsed time', formatDurationShort(elapsedMs)],
     ['hourglass_top', 'Longest stretch', longest],
     [
@@ -164,17 +203,20 @@ export function DetailsRows({ stats, elapsedMs, units, timesHidden = false, hidd
   ];
   return (
     <>
-      <SectionHeader title="Details" style={styles.detailsHeader} />
-      {rows.map(([icon, title, value], i) => (
-        <ListRow
-          key={title}
-          icon={icon}
-          title={title}
-          value={value}
-          strongValue
-          divider={i < rows.length - 1}
-        />
-      ))}
+      <SectionHeader title="Details" subtitle={subtitle} />
+      <View style={styles.group}>
+        {rows.map(([icon, title, value], i) => (
+          <ListRow
+            key={title}
+            icon={icon}
+            title={title}
+            value={value}
+            strongValue
+            dense
+            divider={i < rows.length - 1}
+          />
+        ))}
+      </View>
       {hiddenNote ? (
         <Text style={[type.small, styles.subtitleText, styles.hiddenNote]}>{hiddenNote}</Text>
       ) : null}
@@ -183,7 +225,7 @@ export function DetailsRows({ stats, elapsedMs, units, timesHidden = false, hidd
 }
 
 const makeStyles = (c) => ({
-  kicker: { color: c.accent, letterSpacing: 0.4, marginHorizontal: 4 },
+  kicker: { color: c.accent, marginHorizontal: 4 },
   title: { color: c.text, marginTop: 4, marginHorizontal: 4 },
   subtitle: { color: c.textMuted, marginTop: 2, marginHorizontal: 4 },
   notes: { color: c.text, marginTop: 10, marginHorizontal: 4 },
@@ -194,7 +236,7 @@ const makeStyles = (c) => ({
     marginTop: 18,
     marginHorizontal: 4,
   },
-  heroValue: { ...type.display, fontSize: 64, lineHeight: 68, color: c.text },
+  heroValue: { ...type.display, color: c.accent },
   heroUnit: {
     ...type.title,
     fontFamily: type.bodyLarge.fontFamily,
@@ -216,27 +258,34 @@ const makeStyles = (c) => ({
   grid: { gap: 10, marginTop: 20 },
   row: { flexDirection: 'row', gap: 10 },
   half: { flex: 1 },
-  detailsHeader: { marginBottom: 4 },
-  chipRoads: { borderWidth: 0, backgroundColor: c.accentContainer },
-  chipRoadsText: { color: c.onAccentContainer },
+  group: {
+    paddingHorizontal: 12,
+    borderRadius: 12,
+    backgroundColor: c.card,
+    ...c.cardShadow,
+  },
+  chipRoads: { borderWidth: 0, backgroundColor: c.roadContainer },
+  chipRoadsText: { color: c.onRoadContainer },
   hidden: {
     flexDirection: 'row',
     alignItems: 'center',
     gap: 16,
-    borderRadius: 28,
+    borderRadius: 12,
+    ...c.cardShadow,
     paddingVertical: 18,
     paddingHorizontal: 20,
-    backgroundColor: c.surface,
+    backgroundColor: c.card,
   },
   hiddenWell: {
     width: 48,
     height: 48,
-    borderRadius: 16,
+    borderRadius: 24,
     alignItems: 'center',
     justifyContent: 'center',
     backgroundColor: c.accentContainer,
   },
-  hiddenTitle: { color: c.text, fontFamily: type.button.fontFamily, fontSize: 17 },
+  hiddenTitle: { color: c.text },
+  hiddenText: { fontSize: 14, lineHeight: 20 },
   subtitleText: { color: c.textMuted, marginTop: 2 },
   hiddenNote: { marginTop: 8, marginHorizontal: 4 },
   flex: { flex: 1 },

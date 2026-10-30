@@ -91,8 +91,11 @@ export function elevationParts(m, units) {
     : { value: grouped(m), unit: 'm' };
 }
 
-/** "3–5 NOV · 3 DAYS" or "SAT 25 OCT · 10:12": the green caps line above a trip's name. */
-export function tripKicker(firstStartTs, lastEndTs, dayCount) {
+/**
+ * "3–5 NOV · 3 DAYS" or "SAT 25 OCT · 10:12": the blue caps line above a trip's
+ * name. The Trip page adds the year ("3–5 NOV 2026 · 3 DAYS").
+ */
+export function tripKicker(firstStartTs, lastEndTs, dayCount, { withYear = false } = {}) {
   if (dayCount > 1) {
     const a = new Date(firstStartTs);
     const b = new Date(lastEndTs);
@@ -101,7 +104,8 @@ export function tripKicker(firstStartTs, lastEndTs, dayCount) {
       a.getMonth() === b.getMonth()
         ? `${a.getDate()}–${b.getDate()} ${month(b)}`
         : `${a.getDate()} ${month(a)} – ${b.getDate()} ${month(b)}`;
-    return `${range} · ${dayCount} days`.toUpperCase();
+    const year = withYear ? ` ${b.getFullYear()}` : '';
+    return `${range}${year} · ${dayCount} days`.toUpperCase();
   }
   return `${formatDayDate(firstStartTs)} · ${formatTime(firstStartTs)}`.toUpperCase();
 }

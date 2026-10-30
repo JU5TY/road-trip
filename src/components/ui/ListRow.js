@@ -9,6 +9,8 @@ import Icon from './Icon';
  * right, chevron when tappable. `right` replaces value + chevron (e.g. a Switch).
  * `divider` draws the hairline under all but the last row of a group.
  * `strongValue` shows the value as a stat (dark, semibold) rather than a setting.
+ * `leading` replaces the icon (e.g. the Garage's round icon well); `titleStyle`
+ * restyles the title; `dense` is the 52px row of Details cards.
  */
 export default function ListRow({
   icon,
@@ -22,15 +24,19 @@ export default function ListRow({
   divider = false,
   accessibilityRole,
   accessibilityState,
+  leading,
+  titleStyle,
+  dense = false,
+  style,
 }) {
   const { c } = useTheme();
   const styles = useStyles(makeStyles);
 
   const content = (
     <>
-      {icon ? <Icon name={icon} size={22} color={c.accent} /> : null}
+      {leading ?? (icon ? <Icon name={icon} size={22} color={c.accent} /> : null)}
       <View style={styles.text}>
-        <Text style={[type.bodyLarge, styles.title]} numberOfLines={1}>
+        <Text style={[type.bodyLarge, styles.title, titleStyle]} numberOfLines={1}>
           {title}
         </Text>
         {subtitle ? (
@@ -52,7 +58,7 @@ export default function ListRow({
     </>
   );
 
-  const rowStyle = [styles.row, divider && styles.divider];
+  const rowStyle = [styles.row, dense && styles.dense, divider && styles.divider, style];
   if (!onPress) return <View style={rowStyle}>{content}</View>;
   return (
     <Pressable
@@ -75,6 +81,7 @@ const makeStyles = (c) => ({
     paddingHorizontal: 4,
     paddingVertical: 8,
   },
+  dense: { minHeight: 52, paddingVertical: 0 },
   divider: { borderBottomWidth: 1, borderBottomColor: c.divider },
   text: { flex: 1, minWidth: 0 },
   title: { color: c.text },

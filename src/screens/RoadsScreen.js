@@ -4,7 +4,7 @@ import { Pressable, ScrollView, Text, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import RoadRow from '../components/roads/RoadRow';
-import RoadsProgress from '../components/roads/RoadsProgress';
+import RoadsRing from '../components/roads/RoadsRing';
 import Icon from '../components/ui/Icon';
 import IconButton from '../components/ui/IconButton';
 import SectionHeader from '../components/ui/SectionHeader';
@@ -54,6 +54,7 @@ export default function RoadsScreen() {
     .filter((r) => !totals?.has(r.id))
     .sort((a, b) => a.name.localeCompare(b.name));
   const open = (road) => router.push(`/roads/${road.id}`);
+  const completedCount = ICONIC_ROADS.filter((r) => totals?.has(r.id)).length;
   const km = (road) => {
     const d = distanceParts(road.lengthM, units);
     return `${d.value} ${d.unit}`;
@@ -74,14 +75,15 @@ export default function RoadsScreen() {
         onPress={() => router.back()}
         style={styles.back}
       />
-      <Text style={[type.headline, styles.h1]} role="heading">
-        Iconic Roads
-      </Text>
-      <RoadsProgress
-        completed={ICONIC_ROADS.filter((r) => totals?.has(r.id)).length}
-        total={ICONIC_ROADS.length}
-        style={styles.progress}
-      />
+      <View style={styles.band}>
+        <Text style={[type.headline, styles.h1]} role="heading">
+          Iconic Roads
+        </Text>
+        <RoadsRing completed={completedCount} total={ICONIC_ROADS.length} />
+        <Text style={[type.bodyLarge, styles.text, styles.summary]}>
+          {completedCount} completed · {ICONIC_ROADS.length - completedCount} to go
+        </Text>
+      </View>
       <View style={styles.chips} role="radiogroup">
         {COUNTRIES.map((name) => (
           <Chip
@@ -96,9 +98,9 @@ export default function RoadsScreen() {
       {done.length > 0 ? (
         <>
           <SectionHeader
-            variant="label"
+            variant="overline"
             title={`Completed · ${done.length}`}
-            style={styles.group}
+            style={styles.firstGroup}
           />
           <View style={styles.list}>
             {done.map((road) => (
@@ -116,9 +118,9 @@ export default function RoadsScreen() {
       {notYet.length > 0 ? (
         <>
           <SectionHeader
-            variant="label"
+            variant="overline"
             title={`Not yet · ${notYet.length}`}
-            style={styles.group}
+            style={done.length > 0 ? null : styles.firstGroup}
           />
           <View style={styles.list}>
             {notYet.map((road) => (
@@ -139,22 +141,31 @@ export default function RoadsScreen() {
 const makeStyles = (c) => ({
   screen: { flex: 1, backgroundColor: c.background },
   content: { paddingHorizontal: spacing.md },
-  back: { alignSelf: 'flex-start', marginLeft: -spacing.sm },
-  h1: { color: c.text, marginHorizontal: 4, marginTop: 4 },
-  progress: { marginTop: spacing.md },
+  back: { alignSelf: 'flex-start', marginLeft: -12 },
+  band: {
+    marginHorizontal: -spacing.md,
+    paddingHorizontal: spacing.md,
+    paddingTop: 4,
+    paddingBottom: 24,
+    alignItems: 'center',
+    backgroundColor: c.card,
+  },
+  h1: { alignSelf: 'stretch', color: c.text, marginHorizontal: 4, marginBottom: 12 },
+  text: { color: c.text },
+  summary: { marginTop: 14 },
   chips: { flexDirection: 'row', flexWrap: 'wrap', gap: 8, marginTop: spacing.md },
   chip: {
     flexDirection: 'row',
     alignItems: 'center',
     gap: 6,
-    height: 34,
+    height: 32,
     paddingHorizontal: 14,
-    borderRadius: 17,
+    borderRadius: 8,
   },
-  chipOn: { backgroundColor: c.accentContainer },
+  chipOn: { gap: 4, paddingLeft: 10, backgroundColor: c.accentContainer },
   chipOff: { borderWidth: 1, borderColor: c.outline },
   chipTextOn: { color: c.onAccentContainer },
   chipTextOff: { color: c.textMuted, fontFamily: type.nav.fontFamily },
-  group: { marginTop: 28, marginBottom: 12 },
+  firstGroup: { marginTop: 24 },
   list: { gap: 8 },
 });

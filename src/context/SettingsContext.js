@@ -1,4 +1,5 @@
 import { createContext, useContext, useEffect, useMemo, useState } from 'react';
+import { Appearance } from 'react-native';
 
 import { hasAnyDrive } from '../storage/driveStorage';
 import * as settingsStorage from '../storage/settingsStorage';
@@ -16,6 +17,12 @@ export function SettingsProvider({ children }) {
   // before Welcome existed already have drives, so they skip it.
   const [onboarded, setOnboarded] = useState(settingsStorage.getOnboarded);
   const [showIconicRoads, setShowIconicRoads] = useState(settingsStorage.getShowIconicRoads);
+  const [theme, setTheme] = useState(settingsStorage.getTheme);
+
+  // Pin the app (and the maps and system bars) to light or dark, or follow the phone.
+  useEffect(() => {
+    Appearance.setColorScheme(theme === 'system' ? 'unspecified' : theme);
+  }, [theme]);
 
   useEffect(() => {
     if (onboarded !== null) return;
@@ -39,6 +46,11 @@ export function SettingsProvider({ children }) {
         setBreakReminderMinutes(next);
         save(settingsStorage.setBreakReminderMinutes(next));
       },
+      theme,
+      setTheme: (next) => {
+        setTheme(next);
+        save(settingsStorage.setTheme(next));
+      },
       showIconicRoads,
       setShowIconicRoads: (next) => {
         setShowIconicRoads(next);
@@ -55,7 +67,7 @@ export function SettingsProvider({ children }) {
         save(settingsStorage.setOnboarded(false));
       },
     }),
-    [units, breakReminderMinutes, showIconicRoads, onboarded]
+    [units, breakReminderMinutes, theme, showIconicRoads, onboarded]
   );
 
   return <SettingsContext.Provider value={value}>{children}</SettingsContext.Provider>;

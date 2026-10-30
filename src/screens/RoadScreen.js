@@ -7,44 +7,43 @@ import RouteMap from '../components/RouteMap';
 import Icon from '../components/ui/Icon';
 import ListRow from '../components/ui/ListRow';
 import SectionHeader from '../components/ui/SectionHeader';
-import StatCard from '../components/ui/StatCard';
 import { useSettings } from '../context/SettingsContext';
 import { useStyles, useTheme } from '../hooks/useTheme';
 import { getRoadCompletions } from '../storage/roadStorage';
 import { getTrip } from '../storage/tripStorage';
-import { dayBadgeFor, type } from '../theme';
+import { type } from '../theme';
 import { distanceParts, elevationParts, formatLongDate, formatShortDate } from '../utils/format';
-import { completedLabel, getRoad } from '../utils/iconicRoads';
+import { comingSoon } from '../utils/comingSoon';
+import { bendsLabel, completedLabel, getRoad } from '../utils/iconicRoads';
 import { dayNumberFor, groupIntoDays, tripTitle } from '../utils/tripSummary';
 
 const NOTE = 'Iconic Roads are never timed. Drive them at your own pace.';
 
 /** One drive that completed the road, with its trip and day. */
-function DriveRow({ item }) {
+function DriveRow({ item, isLast }) {
   const { c } = useTheme();
   const styles = useStyles(makeStyles);
-  const [bg, fg] = item.multiDay
-    ? dayBadgeFor(c, item.dayNumber)
-    : [c.accentContainer, c.onAccentContainer];
   return (
     <Pressable
       onPress={() =>
         router.push(item.multiDay ? `/drives/${item.driveId}` : `/trips/${item.tripId}`)
       }
       accessibilityRole="link"
-      style={({ pressed }) => [styles.driveRow, pressed && styles.pressed]}
+      style={({ pressed }) => [
+        styles.driveRow,
+        !isLast && styles.rowDivider,
+        pressed && styles.pressed,
+      ]}
     >
-      <View style={[styles.badge, { backgroundColor: bg }]}>
-        <Text style={[type.bodyStrong, { color: fg, fontFamily: type.navActive.fontFamily }]}>
-          {item.dayNumber}
-        </Text>
+      <View style={styles.badge}>
+        <Icon name="verified" size={22} color={c.onRoadContainer} />
       </View>
       <View style={styles.flex}>
-        <Text style={[type.bodyLarge, styles.text, styles.medium]} numberOfLines={1}>
+        <Text style={[type.bodyStrong, styles.text]} numberOfLines={1}>
           {item.title}
         </Text>
         <Text style={[type.small, styles.muted]} numberOfLines={1}>
-          {formatLongDate(item.driveStartedAt)} · {completedLabel(item.count)}
+          {formatLongDate(item.driveStartedAt)} · {timesLabel(item.count)}
         </Text>
       </View>
       <Icon name="chevron_right" size={24} color={c.textMuted} />
@@ -138,152 +137,228 @@ export default function RoadScreen() {
     />
   );
 
+  // Third stat: corners (the Ring), else steepest, else climb. Details then show
+  // what didn't fit: steepest when corners took its place, otherwise how twisty.
+  const steepest = road.steepestPct ? `${road.steepestPct}%` : null;
+  const third = road.corners
+    ? [String(road.corners), 'corners']
+    : steepest
+      ? [steepest, 'steepest']
+      : [`${climb.value} ${climb.unit}`, 'climb'];
+  const stats = [
+    [`${length.value} ${length.unit}`, 'length'],
+    [`${highest.value} ${highest.unit}`, 'highest'],
+    third,
+  ];
   const details = [
+    ['trending_up', 'Climb', `${climb.value} ${climb.unit}`],
+    road.corners && steepest
+      ? ['show_chart', 'Steepest', steepest]
+      : ['turn_sharp_right', 'Bends', bendsLabel(road)],
     ['swap_horiz', 'Road type', road.roadType],
-    ['repeat', 'Times completed', String(summary.count)],
-    ...(summary.count > 1
-      ? [['calendar_month', 'First completed', formatShortDate(summary.first)]]
-      : []),
   ];
 
   return (
-    <DetailLayout
-      map={map}
-      actions={[{ icon: 'near_me', label: 'Navigate to start', primary: true, onPress: navigate }]}
-    >
-      <Text style={[type.smallStrong, styles.kicker]}>
+    <DetailLayout map={map} mapHeight={360}>
+      <Text style={[type.kicker, styles.kicker]}>
         {`${road.region} · ${road.country}`.toUpperCase()}
       </Text>
-      <Text style={[type.headline, styles.title]}>{road.name}</Text>
+      <Text style={[type.title, styles.title]}>{road.name}</Text>
       <Text style={[type.body, styles.muted, styles.subtitle]}>
-        {loop
-          ? `Loop from ${road.from}`
-          : `${road.from} → ${road.to}`}
+        {road.routeLabel ?? (loop ? `Loop from ${road.from}` : `${road.from} → ${road.to}`)}
       </Text>
 
-      <View style={styles.chips}>
-        {summary.count > 0 ? (
-          <View style={[styles.chip, styles.chipDone]}>
-            <Icon name="verified" size={18} color={c.onAccentContainer} />
-            <Text style={[type.label, { color: c.onAccentContainer }]}>
-              {summary.count > 1 ? 'Last completed' : 'Completed'} {formatShortDate(summary.last)}
+      {summary.count > 0 ? (
+        <View style={[styles.status, styles.statusDone]}>
+          <View style={[styles.statusWell, { backgroundColor: c.roadBadge }]}>
+            <Icon name="verified" filled size={26} color={c.onRoadBadge} />
+          </View>
+          <View style={styles.flex}>
+            <Text style={[type.bodyStrong, { color: c.onRoadContainer }]}>
+              {completedLabel(summary.count)}
+            </Text>
+            <Text style={[type.small, { color: c.roadContainerMuted }]}>
+              {summary.count > 1
+                ? `First ${formatShortDate(summary.first)} · last ${formatShortDate(summary.last)}`
+                : formatShortDate(summary.last)}
             </Text>
           </View>
-        ) : (
-          <View style={[styles.chip, styles.chipTodo]}>
-            <Icon name="route" size={18} color={c.textMuted} />
-            <Text style={[type.label, styles.muted, styles.medium]}>Not completed yet</Text>
-          </View>
-        )}
-      </View>
-
-      <View style={styles.grid}>
-        <StatCard
-          layout="wide"
-          tone="accent"
-          icon="route"
-          label="Length"
-          value={`${length.value} ${length.unit}`}
-        />
-        <View style={styles.row}>
-          <StatCard
-            style={styles.half}
-            icon="landscape"
-            label="Highest point"
-            value={highest.value}
-            unit={highest.unit}
-          />
-          <StatCard
-            style={styles.half}
-            notch
-            icon="trending_up"
-            label="Climb"
-            value={climb.value}
-            unit={climb.unit}
-          />
         </View>
+      ) : (
+        <View style={[styles.status, styles.statusTodo]}>
+          <View style={[styles.statusWell, { backgroundColor: c.track }]}>
+            <Icon name="route" size={24} color={c.outlineStrong} />
+          </View>
+          <View style={styles.flex}>
+            <Text style={[type.bodyStrong, styles.text]}>Not completed yet</Text>
+            <Text style={[type.small, styles.muted]}>
+              {loop ? 'Drive the full lap to complete it' : 'Drive the full road to complete it'}
+            </Text>
+          </View>
+        </View>
+      )}
+
+      <View style={styles.stats}>
+        {stats.map(([value, label]) => (
+          <View key={label} style={styles.stat}>
+            <Text
+              style={[type.stat, styles.statValue, styles.centre]}
+              numberOfLines={1}
+              adjustsFontSizeToFit
+            >
+              {value}
+            </Text>
+            <Text style={[type.label, styles.muted, styles.regular, styles.centre]}>{label}</Text>
+          </View>
+        ))}
       </View>
 
-      <Text style={[type.bodyLarge, styles.text, styles.blurb]}>{road.blurb}</Text>
+      <View style={styles.buttons}>
+        <Pressable
+          onPress={navigate}
+          accessibilityRole="button"
+          style={({ pressed }) => [styles.navigate, pressed && styles.pressed]}
+        >
+          <Icon name="near_me" filled size={22} color={c.onAccent} />
+          <Text style={[type.bodyStrong, { color: c.onAccent }]}>Navigate to start</Text>
+        </Pressable>
+        <Pressable
+          onPress={() => comingSoon('Sharing')}
+          accessibilityRole="button"
+          accessibilityLabel="Share"
+          style={({ pressed }) => [styles.share, pressed && styles.pressed]}
+        >
+          <Icon name="ios_share" size={24} color={c.onAccentContainer} />
+        </Pressable>
+      </View>
 
-      <SectionHeader title="Details" style={styles.detailsHeader} />
-      {details.map(([icon, title, value], i) => (
-        <ListRow
-          key={title}
-          icon={icon}
-          title={title}
-          value={value}
-          strongValue
-          divider={i < details.length - 1}
-        />
-      ))}
+      <SectionHeader title="About" style={styles.aboutHeader} />
+      <Text style={[type.bodyLarge, styles.muted, styles.blurb]}>{road.blurb}</Text>
 
       {drives?.length ? (
         <>
-          <SectionHeader title="Your drives" style={styles.detailsHeader} />
-          {drives.map((item) => (
-            <DriveRow key={item.driveId} item={item} />
-          ))}
+          <SectionHeader title="Your drives" />
+          <View style={styles.group}>
+            {drives.map((item, i) => (
+              <DriveRow key={item.driveId} item={item} isLast={i === drives.length - 1} />
+            ))}
+          </View>
         </>
       ) : null}
 
+      <SectionHeader title="Details" />
+      <View style={styles.group}>
+        {details.map(([icon, title, value], i) => (
+          <ListRow
+            key={title}
+            icon={icon}
+            title={title}
+            value={value}
+            strongValue
+            dense
+            divider={i < details.length - 1}
+          />
+        ))}
+      </View>
+
       <View style={styles.note}>
-        <Icon name="info" size={22} color={c.accent} />
-        <Text style={[type.body, styles.muted, styles.noteText]}>{NOTE}</Text>
+        <Icon name="info" size={20} color={c.textMuted} />
+        <Text style={[type.label, styles.muted, styles.regular, styles.flex]}>{NOTE}</Text>
       </View>
     </DetailLayout>
   );
 }
 
+/** "completed", "completed twice", "completed 3 times" */
+const timesLabel = (n) =>
+  n === 1 ? 'completed' : n === 2 ? 'completed twice' : `completed ${n} times`;
+
 const makeStyles = (c) => ({
   screen: { flex: 1, backgroundColor: c.background },
   center: { alignItems: 'center', justifyContent: 'center' },
-  kicker: { color: c.accent, letterSpacing: 0.4, marginHorizontal: 4 },
+  kicker: { color: c.accent, marginHorizontal: 4 },
   title: { color: c.text, marginTop: 4, marginHorizontal: 4 },
   subtitle: { marginTop: 2, marginHorizontal: 4 },
   text: { color: c.text },
   muted: { color: c.textMuted },
-  medium: { fontFamily: type.statUnit.fontFamily },
-  chips: { flexDirection: 'row', marginTop: 16 },
-  chip: {
+  regular: { fontFamily: type.body.fontFamily },
+  status: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 6,
-    height: 34,
-    paddingHorizontal: 14,
-    borderRadius: 17,
+    gap: 14,
+    marginTop: 18,
+    paddingVertical: 14,
+    paddingHorizontal: 16,
+    borderRadius: 12,
   },
-  chipDone: { backgroundColor: c.accentContainer },
-  chipTodo: { borderWidth: 1, borderColor: c.outline },
-  grid: { gap: 10, marginTop: 20 },
-  row: { flexDirection: 'row', gap: 10 },
-  half: { flex: 1 },
-  blurb: { marginTop: 24, marginHorizontal: 4, lineHeight: 24 },
-  detailsHeader: { marginBottom: 4 },
+  statusDone: { backgroundColor: c.roadContainer },
+  statusTodo: {
+    borderWidth: 1,
+    borderColor: c.outline,
+    paddingVertical: 13,
+    paddingHorizontal: 15,
+  },
+  statusWell: {
+    width: 44,
+    height: 44,
+    borderRadius: 22,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  stats: { flexDirection: 'row', marginTop: 22 },
+  stat: { flex: 1, minWidth: 0, alignItems: 'center' },
+  centre: { textAlign: 'center' },
+  statValue: { color: c.accent },
+  buttons: { flexDirection: 'row', gap: 10, marginTop: 22 },
+  navigate: {
+    flex: 1,
+    height: 56,
+    borderRadius: 28,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 8,
+    backgroundColor: c.accent,
+  },
+  share: {
+    width: 56,
+    height: 56,
+    borderRadius: 28,
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: c.accentContainer,
+  },
+  blurb: { marginHorizontal: 4, lineHeight: 24 },
+  group: {
+    paddingHorizontal: 12,
+    borderRadius: 12,
+    backgroundColor: c.card,
+    ...c.cardShadow,
+  },
   driveRow: {
     flexDirection: 'row',
     alignItems: 'center',
     gap: 16,
-    paddingVertical: 12,
+    minHeight: 64,
     paddingHorizontal: 4,
   },
+  rowDivider: { borderBottomWidth: 1, borderBottomColor: c.divider },
   badge: {
-    width: 44,
-    height: 44,
-    borderRadius: 14,
+    width: 40,
+    height: 40,
+    borderRadius: 20,
     alignItems: 'center',
     justifyContent: 'center',
+    backgroundColor: c.roadContainer,
   },
   flex: { flex: 1, minWidth: 0 },
   note: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 14,
-    marginTop: 28,
-    padding: 16,
-    borderRadius: 20,
-    backgroundColor: c.surface,
+    gap: 10,
+    marginTop: 20,
+    marginHorizontal: 4,
   },
-  noteText: { flex: 1, fontSize: 14, lineHeight: 20 },
+  aboutHeader: { marginBottom: 8 },
   pressed: { opacity: 0.6 },
 });

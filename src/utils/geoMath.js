@@ -287,8 +287,12 @@ export function liveMetrics(trip, now = Date.now()) {
   // Idle before setting off is not a rest stop.
   const isAutoPaused = longDwell && hasMoved;
   // Capped rather than dropped when fixes stop (tunnels), so it never steps backwards.
+  // Nothing counts until the car has left its starting spot: before then each new
+  // fix would reset it, so the timers flicked 0:00, 0:01, 0:00, 0:01 when setting off.
   const rollingMs =
-    last && (last.speed ?? 0) >= STOP_SPEED_MPS ? Math.min(sinceLastFix, STALE_FIX_MS) : 0;
+    hasMoved && last && (last.speed ?? 0) >= STOP_SPEED_MPS
+      ? Math.min(sinceLastFix, STALE_FIX_MS)
+      : 0;
   // Include the not-yet-classified dwell so the numbers don't lag behind.
   const pending = stats.dwell && !longDwell ? stats.dwell : null;
   return {

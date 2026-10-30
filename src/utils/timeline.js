@@ -6,8 +6,10 @@
 //   { type: 'start' | 'finish', time, place, dayNumber? }
 //   { type: 'leg', distanceM, durationMs }                      driving between events
 //   { type: 'stop', time, endTime, place, latitude, longitude } rest stop
+//   { type: 'crossing', time, country, from }                   crossed a border (names)
 //   { type: 'break', durationMs }                               same-day gap between drives
 //   { type: 'overnight', durationMs, place }                    gap to the next driving day
+import { getCountry } from './countries';
 import { haversineDistance } from './geoMath';
 import { groupIntoDays } from './tripSummary';
 
@@ -44,13 +46,50 @@ function scaleTo(raw, total) {
   return raw.map(() => total / raw.length);
 }
 
-/** Timeline of one drive: start, legs and rest stops, finish. */
-export function buildDriveTimeline(drive, points, { dayNumber } = {}) {
-  const { stops } = drive.stats;
-  const stopName = (i) => drive.places.stops?.[i] || 'Rest stop';
+/**
+ * Border crossings of a drive as timeline events, oldest first. A crossing
+ * during a rest stop is left out (it would split the stop).
+ */
+function crossingEvents(drive) {
+  const visits = drive.countries ?? [];
+  return visits
+    .slice(1)
+    .map((v, k) => ({
+      type: 'crossing',
+      time: v.enteredAt,
+      country: getCountry(v.code)?.name,
+      from: getCountry(visits[k].code)?.name,
+    }))
+    .filter(
+      (x) =>
+        x.country &&
+        x.time > drive.startedAt &&
+        x.time < drive.endedAt &&
+        !drive.stats.stops.some((s) => x.time >= s.startedAt && x.time <= s.endedAt)
+    );
+}
 
-  // Leg boundaries: drive start → stop 1 → … → stop n → drive end.
-  const bounds = [drive.startedAt, ...stops.flatMap((s) => [s.startedAt, s.endedAt]), drive.endedAt];
+/** Timeline of one drive: start, legs, rest stops and border crossings, finish. */
+export function buildDriveTimeline(drive, points, { dayNumber } = {}) {
+  const stopName = (i) => drive.places.stops?.[i] || 'Rest stop';
+  const events = [
+    ...drive.stats.stops.map((stop, i) => ({
+      type: 'stop',
+      time: stop.startedAt,
+      endTime: stop.endedAt,
+      place: stopName(i),
+      latitude: stop.latitude,
+      longitude: stop.longitude,
+    })),
+    ...crossingEvents(drive),
+  ].sort((a, b) => a.time - b.time);
+
+  // Leg boundaries: drive start → event 1 → … → event n → drive end.
+  const bounds = [
+    drive.startedAt,
+    ...events.flatMap((e) => [e.time, e.endTime ?? e.time]),
+    drive.endedAt,
+  ];
   const legs = [];
   for (let i = 0; i < bounds.length; i += 2) legs.push([bounds[i], bounds[i + 1]]);
 
@@ -70,17 +109,7 @@ export function buildDriveTimeline(drive, points, { dayNumber } = {}) {
   const items = [{ type: 'start', time: drive.startedAt, place: drive.places.start, dayNumber }];
   legs.forEach((_, i) => {
     items.push({ type: 'leg', distanceM: distances[i], durationMs: durations[i] });
-    const stop = stops[i];
-    if (stop) {
-      items.push({
-        type: 'stop',
-        time: stop.startedAt,
-        endTime: stop.endedAt,
-        place: stopName(i),
-        latitude: stop.latitude,
-        longitude: stop.longitude,
-      });
-    }
+    if (events[i]) items.push(events[i]);
   });
   items.push({ type: 'finish', time: drive.endedAt, place: drive.places.end, dayNumber });
   return items;

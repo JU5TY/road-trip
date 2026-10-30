@@ -11,6 +11,7 @@ import { View } from 'react-native';
 
 import { SettingsProvider, useSettings } from '../context/SettingsContext';
 import { useTheme } from '../hooks/useTheme';
+import { checkAllCountriesIfNeeded } from '../storage/countryStorage';
 import { checkAllDrivesIfNeeded } from '../storage/roadStorage';
 import { fontFiles } from '../theme';
 
@@ -36,6 +37,8 @@ function AppStack() {
       .catch((err) => console.warn('[app] resume failed', err));
     // Check past drives against the Iconic Roads list (once per version of the list).
     checkAllDrivesIfNeeded().catch((err) => console.warn('[app] Iconic Roads check failed', err));
+    // And work out countries for drives recorded before Countries existed.
+    checkAllCountriesIfNeeded().catch((err) => console.warn('[app] countries check failed', err));
   }, [ready, onboarded]);
 
   if (!ready) return <View style={{ flex: 1, backgroundColor: c.background }} />;

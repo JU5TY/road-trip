@@ -12,7 +12,7 @@ import Icon from './ui/Icon';
 /**
  * Trip card: route map, green date line, name, "780 km · 11h 55m". Tapping it
  * opens the trip. variant 'large' (map on top, Home's Latest trip) or 'row'
- * (88px thumbnail on the left, Trips list). `showMap={false}` swaps the map for
+ * (round 56px map on the right, Trips list). `showMap={false}` swaps the map for
  * a placeholder while the screen is in the background. `roadCount` adds an
  * Iconic Roads chip. Drives whose times are hidden are left out of the time.
  */
@@ -34,13 +34,23 @@ export default function TripCard({
   const timed = trip.drives.filter((d) => !d.stats.timesHidden);
   const movingTimeMs = timed.reduce((sum, d) => sum + (d.stats.movingTimeMs ?? 0), 0);
   const large = variant === 'large';
-  const chip =
+  const countryCount = new Set(trip.drives.flatMap((d) => (d.countries ?? []).map((v) => v.code)))
+    .size;
+  const roadChip =
     roadCount > 0 ? (
-      <View style={styles.chip}>
-        <Icon name="verified" size={14} color={c.onAccentContainer} />
-        <Text style={[type.caps, styles.chipText]}>
+      <View style={[styles.chip, styles.roadChip]}>
+        <Icon name="verified" size={14} color={c.onRoadContainer} />
+        <Text style={[type.nav, styles.roadChipText]}>
           {roadCount} {roadCount === 1 ? 'Iconic Road' : 'Iconic Roads'}
         </Text>
+      </View>
+    ) : null;
+  // The Trips list also counts countries, from two up.
+  const countryChip =
+    !large && countryCount > 1 ? (
+      <View style={[styles.chip, styles.countryChip]}>
+        <Icon name="public" size={14} color={c.textMuted} />
+        <Text style={[type.nav, styles.muted]}>{countryCount} countries</Text>
       </View>
     ) : null;
 
@@ -53,17 +63,7 @@ export default function TripCard({
       accessibilityRole="link"
       style={({ pressed }) => [large ? styles.large : styles.row, pressed && styles.pressed]}
     >
-      {large ? (
-        <RoutePreview segments={segments ?? []} height={180} active={showMap} />
-      ) : (
-        <RoutePreview
-          segments={segments ?? []}
-          height={88}
-          width={88}
-          rounded={16}
-          active={showMap}
-        />
-      )}
+      {large ? <RoutePreview segments={segments ?? []} height={180} active={showMap} /> : null}
       <View style={large ? styles.largeText : styles.rowText}>
         <Text style={[type.caps, styles.kicker]} numberOfLines={1}>
           {tripKicker(first.startedAt, last.endedAt, dayCount)}
@@ -76,41 +76,66 @@ export default function TripCard({
             {formatDistance(summary.distanceM, units, summary.distanceM < 100000 ? 1 : 0)}
             {timed.length > 0 ? ` · ${formatDurationShort(movingTimeMs)}` : ''}
           </Text>
-          {chip ? <View style={large ? null : styles.chipBelow}>{chip}</View> : null}
+          {large ? roadChip : null}
         </View>
+        {!large && (roadChip || countryChip) ? (
+          <View style={styles.chipBelow}>
+            {roadChip}
+            {countryChip}
+          </View>
+        ) : null}
       </View>
+      {large ? null : (
+        <RoutePreview
+          segments={segments ?? []}
+          height={56}
+          width={56}
+          rounded={28}
+          active={showMap}
+        />
+      )}
     </Pressable>
   );
 }
 
 const makeStyles = (c) => ({
-  large: { borderRadius: radius.card, overflow: 'hidden', backgroundColor: c.surfaceLow },
+  large: {
+    borderRadius: radius.card,
+    overflow: 'hidden',
+    backgroundColor: c.card,
+    ...c.cardShadow,
+  },
   largeText: { paddingTop: 16, paddingHorizontal: 20, paddingBottom: 18, gap: 2 },
   row: {
     flexDirection: 'row',
     alignItems: 'center',
     gap: 16,
-    padding: 12,
+    paddingVertical: 14,
+    paddingHorizontal: 16,
     borderRadius: radius.lg,
-    backgroundColor: c.surfaceLow,
+    backgroundColor: c.card,
+    ...c.cardShadow,
   },
   rowText: { flex: 1, minWidth: 0, gap: 2 },
-  rowTitle: { ...type.bodyStrong, fontSize: 17 },
+  rowTitle: { ...type.bodyStrong },
   rowMeta: { ...type.body, fontSize: 14 },
   metaRow: { flexDirection: 'row', alignItems: 'center', gap: 10, marginTop: 4 },
-  chipBelow: { flexDirection: 'row', marginTop: 6 },
-  chip: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 4,
-    alignSelf: 'flex-start',
+  chipBelow: { flexDirection: 'row', gap: 6, marginTop: 4 },
+  chip: { flexDirection: 'row', alignItems: 'center', gap: 4, borderRadius: 6 },
+  roadChip: {
     paddingVertical: 2,
     paddingLeft: 6,
     paddingRight: 8,
-    borderRadius: 10,
-    backgroundColor: c.accentContainer,
+    backgroundColor: c.roadContainer,
   },
-  chipText: { color: c.onAccentContainer, letterSpacing: 0 },
+  roadChipText: { color: c.onRoadContainer },
+  countryChip: {
+    paddingVertical: 1,
+    paddingLeft: 5,
+    paddingRight: 7,
+    borderWidth: 1,
+    borderColor: c.outline,
+  },
   kicker: { color: c.accent },
   title: { color: c.text },
   muted: { color: c.textMuted },

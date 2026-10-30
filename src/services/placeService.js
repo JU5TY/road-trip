@@ -39,7 +39,11 @@ async function lookup(coord, toName) {
 }
 
 async function resolvePlaces(drive, { includeStops }) {
-  const places = { ...drive.places, stops: [...(drive.places.stops ?? [])] };
+  const places = {
+    ...drive.places,
+    stops: [...(drive.places.stops ?? [])],
+    crossings: [...(drive.places.crossings ?? [])],
+  };
   let changed = false;
 
   if (places.start === undefined || places.end === undefined) {
@@ -62,6 +66,17 @@ async function resolvePlaces(drive, { includeStops }) {
         }
       }
     }
+
+    // Border crossings: crossings[k] names where visit k began (k = 0 is the start).
+    for (const [k, visit] of (drive.countries ?? []).entries()) {
+      if (k > 0 && places.crossings[k] == null) {
+        const name = await lookup(visit, townName);
+        if (name !== undefined) {
+          places.crossings[k] = name;
+          changed = true;
+        }
+      }
+    }
   }
 
   // JSON drops undefined values, so failed lookups are retried next time.
@@ -71,7 +86,7 @@ async function resolvePlaces(drive, { includeStops }) {
 
 /**
  * Make sure a completed drive has place names, looking up any that are missing.
- * Resolves to the drive's places: { start, end, stops: [] }.
+ * Resolves to the drive's places: { start, end, stops: [], crossings: [] }.
  */
 export function ensureDrivePlaces(drive, { includeStops = false } = {}) {
   const key = `${drive.id}:${includeStops}`;

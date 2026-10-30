@@ -83,6 +83,7 @@ const ROADS = [
     id: 'bealach-na-ba',
     name: 'Bealach na Bà',
     region: 'Highlands',
+    steepestPct: 20, // signposted
     country: 'Scotland',
     roadType: 'Single track',
     from: 'Tornapress',
@@ -181,6 +182,9 @@ const RING = {
   id: 'nordschleife',
   name: 'Nürburgring Nordschleife',
   region: 'Eifel',
+  corners: 73,
+  steepestPct: 17, // Ex-Mühle
+  routeLabel: 'Tourist lap · clockwise from Döttinger Höhe',
   country: 'Germany',
   roadType: 'Toll road, one way',
   from: 'Döttinger Höhe',

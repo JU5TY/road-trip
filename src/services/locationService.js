@@ -13,6 +13,7 @@ import {
   getActiveDrive,
   getDrive,
 } from '../storage/driveStorage';
+import { checkDriveCountries } from '../storage/countryStorage';
 import { checkDrive } from '../storage/roadStorage';
 import { applyFixes, finalizeStats, isUsableFix, toFix } from '../utils/geoMath';
 import { ensureDrivePlaces } from './placeService';
@@ -158,7 +159,7 @@ export async function startDrive({ tripId = null } = {}) {
 }
 
 /**
- * Stop recording and close out the active drive, including its Iconic Roads.
+ * Stop recording and close out the active drive, including its Iconic Roads and countries.
  * Returns the completed drive id.
  */
 export async function stopDrive() {
@@ -172,6 +173,10 @@ export async function stopDrive() {
     // Iconic Roads, before Drive saved opens so it can show them (all offline).
     await checkDrive(drive.id).catch((err) =>
       console.warn('[locationService] Iconic Roads check failed', err)
+    );
+    // Countries too, before the place lookup so border crossings get names.
+    await checkDriveCountries(drive.id).catch((err) =>
+      console.warn('[locationService] countries check failed', err)
     );
     // Look up place names now while we're likely online; failures retry later.
     getDrive(drive.id)

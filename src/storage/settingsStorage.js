@@ -51,3 +51,16 @@ export function getShowIconicRoads() {
 export function setShowIconicRoads(show) {
   return Storage.setItemAsync(SHOW_ROADS_KEY, String(show));
 }
+
+const THEME_KEY = 'settings.theme';
+export const THEME_OPTIONS = ['system', 'light', 'dark'];
+
+/** 'system' (follow the phone), 'light' or 'dark'. */
+export function getTheme() {
+  const saved = Storage.getItemSync(THEME_KEY);
+  return THEME_OPTIONS.includes(saved) ? saved : 'system';
+}
+
+export function setTheme(theme) {
+  return Storage.setItemAsync(THEME_KEY, theme);
+}

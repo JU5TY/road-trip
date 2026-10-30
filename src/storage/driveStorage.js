@@ -11,6 +11,9 @@ export function rowToDrive(row) {
     status: row.status,
     stats: JSON.parse(row.stats),
     places: row.places ? JSON.parse(row.places) : {},
+    // [{ code, enteredAt, latitude, longitude, distanceM }]; null until checked.
+    countries: row.countries ? JSON.parse(row.countries) : null,
+    vehicleId: row.vehicle_id ?? null,
   };
 }
 
@@ -27,17 +30,22 @@ export async function createDrive({ tripId = null, startedAt = Date.now() } = {}
   const db = await getDb();
   const stats = createTripStats();
   let driveId;
+  let vehicleId;
   let targetTripId = tripId;
   await db.withTransactionAsync(async () => {
     if (targetTripId === null) {
       const res = await db.runAsync('INSERT INTO trips (created_at) VALUES (?)', startedAt);
       targetTripId = res.lastInsertRowId;
     }
+    // Driven in the default vehicle from the Garage, if one is set up.
+    const vehicle = await db.getFirstAsync('SELECT id FROM vehicles WHERE is_default = 1 LIMIT 1');
+    vehicleId = vehicle?.id ?? null;
     const res = await db.runAsync(
-      "INSERT INTO drives (trip_id, started_at, status, stats) VALUES (?, ?, 'active', ?)",
+      "INSERT INTO drives (trip_id, started_at, status, stats, vehicle_id) VALUES (?, ?, 'active', ?, ?)",
       targetTripId,
       startedAt,
-      JSON.stringify(stats)
+      JSON.stringify(stats),
+      vehicleId
     );
     driveId = res.lastInsertRowId;
   });
@@ -49,6 +57,8 @@ export async function createDrive({ tripId = null, startedAt = Date.now() } = {}
     status: 'active',
     stats,
     places: {},
+    countries: null,
+    vehicleId,
   };
 }
 

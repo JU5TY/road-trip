@@ -4,13 +4,13 @@ import { useStyles, useTheme } from '../../hooks/useTheme';
 import { radius, type } from '../../theme';
 
 /** "2 of 11 completed" with a progress bar. `children` sit under the bar. */
-export default function RoadsProgress({ completed, total, tone = 'surface', children, style }) {
+export default function RoadsProgress({ completed, total, children, style }) {
   const { c } = useTheme();
   const styles = useStyles(makeStyles);
   const share = total > 0 ? completed / total : 0;
   return (
     <View
-      style={[styles.card, { backgroundColor: tone === 'low' ? c.surfaceLow : c.surface }, style]}
+      style={[styles.card, { backgroundColor: c.card }, c.cardShadow, style]}
       accessible
       accessibilityLabel={`${completed} of ${total} Iconic Roads completed`}
     >

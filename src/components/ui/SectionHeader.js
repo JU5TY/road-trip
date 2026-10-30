@@ -4,23 +4,49 @@ import { useStyles } from '../../hooks/useTheme';
 import { type } from '../../theme';
 
 /**
- * Section heading. variant 'title' (20px, Trip's "Details" / "Charts", with an
- * optional green link like "All trips") or 'label' (14px grey, settings groups
- * and month headers).
+ * Section heading.
+ * variant 'title': 18px, for sections of a Trip or Day page ("Details"), with
+ *   an optional grey `subtitle` line under it ("Whole trip").
+ * variant 'overline': uppercase 14px, for groups on Home, Trips and Iconic
+ *   Roads ("LATEST TRIP", month headers). 'label' is the same with less space
+ *   under it, for the You screen's groups of rows.
+ * `actionLabel` adds a blue link on the right ("All trips").
  */
-export default function SectionHeader({ title, variant = 'title', actionLabel, onAction, style }) {
+export default function SectionHeader({
+  title,
+  subtitle,
+  variant = 'title',
+  actionLabel,
+  onAction,
+  style,
+}) {
   const styles = useStyles(makeStyles);
   const isTitle = variant === 'title';
   return (
-    <View style={[isTitle ? styles.titleRow : styles.labelRow, style]}>
-      <Text
-        style={isTitle ? [type.section, styles.title] : [type.label, styles.label]}
-        role="heading"
-      >
-        {title}
-      </Text>
+    <View
+      style={[
+        styles.row,
+        !isTitle && styles.overlineRow,
+        variant === 'label' && styles.labelRow,
+        style,
+      ]}
+    >
+      <View style={styles.text}>
+        <Text
+          style={isTitle ? [type.section, styles.title] : [type.overline, styles.overline]}
+          role="heading"
+        >
+          {isTitle ? title : title.toUpperCase()}
+        </Text>
+        {subtitle ? <Text style={[type.label, styles.subtitle]}>{subtitle}</Text> : null}
+      </View>
       {actionLabel ? (
-        <Pressable onPress={onAction} accessibilityRole="link" hitSlop={12} style={styles.actionWrap}>
+        <Pressable
+          onPress={onAction}
+          accessibilityRole="link"
+          hitSlop={12}
+          style={styles.actionWrap}
+        >
           <Text style={[type.label, styles.action]} numberOfLines={1}>
             {actionLabel}
           </Text>
@@ -31,17 +57,20 @@ export default function SectionHeader({ title, variant = 'title', actionLabel, o
 }
 
 const makeStyles = (c) => ({
-  titleRow: {
+  row: {
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
     marginTop: 28,
-    marginBottom: 14,
+    marginBottom: 10,
     marginHorizontal: 4,
   },
-  labelRow: { marginTop: 28, marginBottom: 4, marginHorizontal: 4 },
-  title: { color: c.text, flexShrink: 1 },
-  label: { color: c.textMuted },
+  overlineRow: { marginBottom: 12 },
+  labelRow: { marginBottom: 4 },
+  text: { flexShrink: 1 },
+  title: { color: c.text },
+  overline: { color: c.text },
+  subtitle: { color: c.textMuted, fontFamily: type.body.fontFamily, marginTop: 2 },
   // Android measures letter-spaced custom fonts a little short, which wrapped
   // "All roads" onto a hidden second line; no spacing and no shrinking here.
   actionWrap: { flexShrink: 0, marginLeft: 12 },

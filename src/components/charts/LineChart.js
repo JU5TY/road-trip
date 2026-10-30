@@ -5,6 +5,8 @@ import Svg, { Circle, Line, Path } from 'react-native-svg';
 import { useStyles, useTheme } from '../../hooks/useTheme';
 import { type } from '../../theme';
 
+const MARKER_LABEL_W = 64;
+
 /** Index of the datum in `data` (sorted by x) nearest to `x`. */
 function nearestIndex(data, x) {
   let lo = 0;
@@ -33,6 +35,7 @@ function runsOf(data) {
  * the value under the finger); start and end of the x axis sit underneath.
  * series:   [{ key, color, data: [{ x, y, breakBefore?, ... }] }]  (x ascending)
  * refLine:  optional { y, label }, drawn dashed (e.g. average speed)
+ * markers:  [{ x, label }] dashed upright lines, labelled under the x axis (borders)
  * formatX / formatY: value → label
  * yFromZero: start the y axis at 0 (speed); otherwise fit to the data
  * minYRange: smallest y span, so flat data doesn't look jagged
@@ -44,6 +47,7 @@ export default function LineChart({
   formatX,
   formatY,
   refLine,
+  markers = [],
   strokeWidth = 3,
   yFromZero = false,
   minYRange = 1,
@@ -187,6 +191,18 @@ export default function LineChart({
                 strokeDasharray="5 4"
               />
             ) : null}
+            {markers.map((m) => (
+              <Line
+                key={`marker-${m.x}`}
+                x1={sx(m.x)}
+                x2={sx(m.x)}
+                y1={0}
+                y2={height}
+                stroke={c.textMuted}
+                strokeWidth={1.5}
+                strokeDasharray="4 4"
+              />
+            ))}
             {active ? (
               <>
                 <Line
@@ -203,7 +219,7 @@ export default function LineChart({
                   cy={sy(active.datum.y)}
                   r={6}
                   fill={active.color}
-                  stroke={c.surfaceLow}
+                  stroke={c.card}
                   strokeWidth={2.5}
                 />
               </>
@@ -214,6 +230,25 @@ export default function LineChart({
       <View style={styles.xLabels}>
         <Text style={[type.caps, styles.muted]}>{formatX(domain.xMin)}</Text>
         <Text style={[type.caps, styles.muted]}>{formatX(domain.xMax)}</Text>
+        {plotW > 0
+          ? markers
+              // Leave room for the start and end labels.
+              .filter((m) => sx(m.x) > MARKER_LABEL_W && sx(m.x) < plotW - MARKER_LABEL_W)
+              .map((m) => (
+                <Text
+                  key={`label-${m.x}`}
+                  style={[
+                    type.caps,
+                    styles.muted,
+                    styles.markerLabel,
+                    { left: sx(m.x) - MARKER_LABEL_W / 2 },
+                  ]}
+                  numberOfLines={1}
+                >
+                  {m.label}
+                </Text>
+              ))
+          : null}
       </View>
     </View>
   );
@@ -231,4 +266,5 @@ const makeStyles = (c) => ({
   readout: { color: c.text, fontFamily: type.smallStrong.fontFamily },
   legend: { flexDirection: 'row', alignItems: 'center', gap: 6 },
   xLabels: { flexDirection: 'row', justifyContent: 'space-between', marginTop: 6 },
+  markerLabel: { position: 'absolute', top: 0, width: MARKER_LABEL_W, textAlign: 'center' },
 });

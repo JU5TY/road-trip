@@ -4,12 +4,14 @@ import { useStyles, useTheme } from '../../hooks/useTheme';
 import { type } from '../../theme';
 
 /**
- * Centred dialog with a text Cancel and one coloured action, e.g. Record's
- * "Stop and save this drive?". `destructive` makes the action red.
+ * Centred dialog: a title, an optional bold `highlight` line (e.g. Record's
+ * "48.7 mi · 1h 12m"), a message, and two equal buttons side by side: an
+ * outlined Cancel and a filled action. `destructive` makes the action red.
  */
 export default function ConfirmDialog({
   visible,
   title,
+  highlight,
   message,
   cancelLabel = 'Cancel',
   confirmLabel,
@@ -24,26 +26,35 @@ export default function ConfirmDialog({
       <View style={styles.scrim}>
         <View style={styles.dialog} role="alertdialog" accessibilityLabel={title}>
           <Text style={[type.title, styles.title]}>{title}</Text>
-          {message ? <Text style={[type.body, styles.message]}>{message}</Text> : null}
+          {highlight ? <Text style={[type.section, styles.highlight]}>{highlight}</Text> : null}
+          {message ? (
+            <Text style={[type.body, styles.message, highlight && styles.messageAfter]}>
+              {message}
+            </Text>
+          ) : null}
           <View style={styles.buttons}>
             <Pressable
               onPress={onCancel}
-              style={({ pressed }) => [styles.button, pressed && styles.pressed]}
+              style={({ pressed }) => [styles.button, styles.cancel, pressed && styles.pressed]}
               accessibilityRole="button"
             >
-              <Text style={[type.button, { color: c.accent }]}>{cancelLabel}</Text>
+              <Text style={[type.button, { color: c.accent }]} numberOfLines={1}>
+                {cancelLabel}
+              </Text>
             </Pressable>
             <Pressable
               onPress={onConfirm}
               style={({ pressed }) => [
                 styles.button,
-                styles.confirm,
                 { backgroundColor: destructive ? c.stop : c.accent },
                 pressed && styles.pressed,
               ]}
               accessibilityRole="button"
             >
-              <Text style={[type.button, { color: destructive ? c.onStop : c.onAccent }]}>
+              <Text
+                style={[type.button, { color: destructive ? c.onStop : c.onAccent }]}
+                numberOfLines={1}
+              >
                 {confirmLabel}
               </Text>
             </Pressable>
@@ -65,16 +76,23 @@ const makeStyles = (c) => ({
   dialog: {
     width: '100%',
     maxWidth: 420,
-    paddingTop: 24,
-    paddingHorizontal: 24,
-    paddingBottom: 16,
+    padding: 24,
     borderRadius: 28,
     backgroundColor: c.card,
   },
-  title: { color: c.text, fontSize: 24, lineHeight: 30 },
+  title: { color: c.text, fontSize: 24, lineHeight: 32 },
+  highlight: { color: c.text, fontSize: 20, lineHeight: 28, marginTop: 12 },
   message: { color: c.textMuted, marginTop: 8, lineHeight: 22 },
-  buttons: { flexDirection: 'row', justifyContent: 'flex-end', gap: 8, marginTop: 20 },
-  button: { height: 44, paddingHorizontal: 16, borderRadius: 22, justifyContent: 'center' },
-  confirm: { paddingHorizontal: 20 },
+  messageAfter: { marginTop: 4 },
+  buttons: { flexDirection: 'row', gap: 12, marginTop: 24 },
+  button: {
+    flex: 1,
+    height: 48,
+    paddingHorizontal: 12,
+    borderRadius: 24,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  cancel: { borderWidth: 1, borderColor: c.outline },
   pressed: { opacity: 0.8 },
 });

@@ -443,11 +443,10 @@ export default function RecordScreen() {
       {permissionSheet}
       <ConfirmDialog
         visible={confirmingStop}
-        title="Stop and save this drive?"
-        message={`${distance} · ${driving} driving. You can still add to this trip tomorrow.`}
-        cancelLabel="Keep recording"
-        confirmLabel="Stop and save"
-        destructive
+        title="Save this drive?"
+        highlight={`${distance} · ${driving}`}
+        message="Drive again within 3 days to continue this trip."
+        confirmLabel="Save"
         onCancel={() => setConfirmingStop(false)}
         onConfirm={() => {
           setConfirmingStop(false);

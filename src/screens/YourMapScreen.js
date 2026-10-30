@@ -2,9 +2,10 @@ import * as Location from 'expo-location';
 import { router } from 'expo-router';
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { StyleSheet, Text, View } from 'react-native';
-import MapView, { Marker, Polyline } from 'react-native-maps';
+import MapView, { Polyline } from 'react-native-maps';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
+import DotMarker from '../components/DotMarker';
 import IconButton from '../components/ui/IconButton';
 import { useSettings } from '../context/SettingsContext';
 import { useRoadTotals } from '../hooks/useRoadTotals';
@@ -161,16 +162,14 @@ export default function YourMapScreen() {
           />
         ))}
         {roadDots.map((r) => (
-          <Marker
+          <DotMarker
             key={r.id}
             coordinate={r.coordinate}
-            anchor={{ x: 0.5, y: 0.5 }}
-            tracksViewChanges={false}
             accessibilityLabel={r.name}
             onPress={() => router.push(`/roads/${r.id}`)}
           >
             <View style={styles.roadDot} />
-          </Marker>
+          </DotMarker>
         ))}
       </MapView>
 

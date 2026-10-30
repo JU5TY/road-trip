@@ -1,12 +1,10 @@
 import { useMemo, useState } from 'react';
 import { Pressable, Text, View } from 'react-native';
 
-import { openPremium, usePremium } from '../../hooks/usePremium';
-import { useStyles, useTheme } from '../../hooks/useTheme';
+import { useStyles } from '../../hooks/useTheme';
 import { radius, type } from '../../theme';
 import { elevationSeries, speedByDistanceSeries, stepDistance } from '../../utils/chartData';
 import { distanceUnit, formatElevation, speedUnit, toDistance, toSpeed } from '../../utils/format';
-import Icon from '../ui/Icon';
 import SectionHeader from '../ui/SectionHeader';
 import LineChart from './LineChart';
 
@@ -24,8 +22,7 @@ const OPTIONS = [
  * distance from the start. `tracks` are the drives in order, each in its day's
  * colour: [{ key, color, points }], crossings left out (utils/crossings.js
  * withoutCrossings). `avgSpeedMps` draws the dashed Avg line.
- * `speedHidden` leaves only the elevation chart (times hidden for safety). The
- * Speed chart is Premium: for a free user its switch opens the Premium screen.
+ * `speedHidden` leaves only the elevation chart (times hidden for safety).
  * `markers` ([{ time, label }]) mark moments on the elevation chart, e.g. borders.
  */
 export default function ChartsCard({
@@ -36,10 +33,8 @@ export default function ChartsCard({
   speedHidden = false,
   markers = [],
 }) {
-  const { c } = useTheme();
   const styles = useStyles(makeStyles);
   const [choice, setChoice] = useState('elevation');
-  const premium = usePremium();
 
   const { elevation, speed, marks } = useMemo(() => {
     const perTrack = Math.max(60, Math.floor(TOTAL_POINTS / Math.max(1, tracks.length)));
@@ -77,17 +72,12 @@ export default function ChartsCard({
 
   const hasElevation = elevation.some((s) => s.data.length > 1);
   const hasSpeed = speed.some((s) => s.data.length > 1);
-  // With times hidden (a drive that is just an Iconic Road), or without Premium,
-  // only elevation is shown.
-  const elevationOnly = speedHidden || !premium;
+  // With times hidden (a drive that is just an Iconic Road), only elevation is shown.
+  const elevationOnly = speedHidden;
   if (elevationOnly ? !hasElevation : !hasSpeed) return null;
   const showing = speedHidden ? 'elevation' : hasElevation ? choice : 'speed';
 
   const select = (next) => {
-    if (next === 'speed' && !premium) {
-      openPremium();
-      return;
-    }
     onScrub?.(null);
     setChoice(next);
   };
@@ -110,14 +100,6 @@ export default function ChartsCard({
                   accessibilityRole="radio"
                   accessibilityState={{ checked: on }}
                 >
-                  {value === 'speed' && !premium ? (
-                    <Icon
-                      name="workspace_premium"
-                      filled
-                      size={16}
-                      color={on ? c.onAccent : c.textMuted}
-                    />
-                  ) : null}
                   <Text style={[type.label, on ? styles.optionTextOn : styles.optionText]}>
                     {label}
                   </Text>

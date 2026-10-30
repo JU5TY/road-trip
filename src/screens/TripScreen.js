@@ -332,7 +332,6 @@ export default function TripScreen() {
         visible={menu === 'options'}
         title="Trip options"
         actions={[
-          { icon: 'edit', label: 'Edit name and notes', onPress: () => setMenu('edit') },
           // A lone drive can join an earlier trip (e.g. "Continue" was missed).
           ...(single
             ? [

@@ -1,7 +1,8 @@
 import { StyleSheet, View } from 'react-native';
-import MapView, { Marker, Polyline } from 'react-native-maps';
+import MapView, { Polyline } from 'react-native-maps';
 
 import { useStyles, useTheme } from '../hooks/useTheme';
+import DotMarker from './DotMarker';
 import MapDot from './MapDot';
 
 /** Region that fits all coordinates with some padding (no imperative fitting needed). */
@@ -61,14 +62,9 @@ export default function RoutePreview({ segments, height = 160, active = true }) 
           ['start', all[0], c.start],
           ['finish', all.at(-1), c.finish],
         ].map(([kind, coordinate, color]) => (
-          <Marker
-            key={kind}
-            coordinate={coordinate}
-            anchor={{ x: 0.5, y: 0.5 }}
-            tracksViewChanges={false}
-          >
+          <DotMarker key={kind} coordinate={coordinate}>
             <MapDot kind={kind} color={color} />
-          </Marker>
+          </DotMarker>
         ))}
       </MapView>
     </View>

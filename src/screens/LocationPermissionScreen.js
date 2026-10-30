@@ -9,13 +9,13 @@ import { getLocationAccess, requestLocationAccess } from '../services/locationSe
 import { type } from '../theme';
 
 const REASONS = [
-  ['route', 'Draws your route', 'Miles, time and climb come from your location.'],
+  ['route', 'Draws your route', 'Miles, time and climb come from your location'],
   [
     'notifications',
     'Keeps going with the screen off',
-    'A notification shows while a trip is recording.',
+    'A notification shows while a trip is recording',
   ],
-  ['lock', 'Stays on your phone', 'Your location is never uploaded or shared.'],
+  ['lock', 'Stays on your phone', 'Your trips are never sent to us'],
 ];
 
 /**

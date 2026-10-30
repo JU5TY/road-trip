@@ -17,7 +17,7 @@ import { useStyles, useTheme } from '../hooks/useTheme';
 import { listTrips } from '../storage/tripStorage';
 import { radius, spacing, type } from '../theme';
 import { distanceParts } from '../utils/format';
-import { ICONIC_ROADS, getRoad } from '../utils/iconicRoads';
+import { ICONIC_ROADS } from '../utils/iconicRoads';
 import { computeTotals, firstDriveMonth } from '../utils/tripSummary';
 
 /** The band at the top: the round Your map, the all-time distance and since when. */
@@ -41,10 +41,6 @@ function RoadsCard() {
   const styles = useStyles(makeStyles);
   const totals = useRoadTotals();
   const done = totals ? ICONIC_ROADS.filter((r) => totals.has(r.id)).length : 0;
-  const examples = ['snake-pass', 'bealach-na-ba']
-    .map((id) => getRoad(id)?.name)
-    .filter(Boolean)
-    .join(' or ');
   return (
     <>
       <SectionHeader
@@ -57,7 +53,7 @@ function RoadsCard() {
         <RoadsProgress completed={done} total={ICONIC_ROADS.length}>
           {done === 0 ? (
             <Text style={[type.body, styles.roadsHint]}>
-              Drive any of {ICONIC_ROADS.length} famous roads, like {examples}, to complete them.
+              Drive any of {ICONIC_ROADS.length} famous roads, like the Nürburgring, to complete them.
             </Text>
           ) : null}
         </RoadsProgress>

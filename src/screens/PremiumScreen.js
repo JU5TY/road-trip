@@ -10,13 +10,14 @@ import { useStyles, useTheme } from '../hooks/useTheme';
 import { radius, spacing, type } from '../theme';
 import { comingSoon } from '../utils/comingSoon';
 
+// Backup first: it's the main reason to buy.
 const FEATURES = [
-  ['share', 'No branding', 'Share images without our logo'],
-  ['garage', 'More vehicles', 'Your whole garage in one place'],
   ['cloud_upload', 'Automatic backup', 'Trips safe if you change phone'],
+  ['share', 'Photo sharing', 'Your photos with your route and stats'],
+  ['garage', 'More vehicles', 'Your whole garage in one place'],
   ['download', 'GPX export', 'Take routes into other apps'],
-  ['insights', 'Analytics', 'Your driving over months and years'],
-  ['monitoring', 'Advanced charts', 'Speed, climb and more per drive'],
+  ['map', 'Satellite maps', 'Satellite and terrain views of your trips'],
+  ['landscape', 'Map posters', 'Your trip map as a digital wallpaper'],
 ];
 
 function FeatureTile({ icon, title, description }) {
@@ -69,7 +70,7 @@ export default function PremiumScreen() {
         <View style={styles.free}>
           <Icon name="check_circle" size={18} color={c.textMuted} />
           <Text style={[type.label, styles.muted, styles.freeText]}>
-            Recording, trips, Iconic Roads and sharing stay free.
+            Everything else stays free: recording, trips, charts, Iconic Roads and sharing.
           </Text>
         </View>
       </ScrollView>

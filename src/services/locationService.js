@@ -56,23 +56,6 @@ const TRACKING_OPTIONS = {
   },
 };
 
-// While paused on Android: keep the foreground service (and its notification,
-// now saying Paused) at the lowest power. Fixes taken during a pause are dropped.
-const PAUSED_OPTIONS = {
-  ...TRACKING_OPTIONS,
-  accuracy: Location.Accuracy.Lowest,
-  distanceInterval: 1000,
-  timeInterval: 5 * 60 * 1000,
-  deferredUpdatesInterval: 5 * 60 * 1000,
-  foregroundService: {
-    ...TRACKING_OPTIONS.foregroundService,
-    notificationTitle: 'Road trip paused',
-    notificationBody: 'Paused. Open Road Trip to resume.',
-  },
-};
-// iOS has no notification to update, so GPS simply stops while paused.
-const keepsPausedNotification = Platform.OS === 'android';
-
 // Location batches can arrive faster than SQLite writes finish; process them
 // strictly in order so stats are never computed from a stale snapshot.
 let queue = Promise.resolve();
@@ -148,20 +131,16 @@ export async function requestLocationAccess() {
   return toAccess(await Location.requestForegroundPermissionsAsync());
 }
 
-async function startUpdates({ paused = false } = {}) {
+async function startUpdates() {
   if (!(await getLocationAccess()).granted) {
     throw new Error('Location access is needed to record a trip.');
   }
   if (await canTrackInBackground()) {
     if (!(await Location.hasStartedLocationUpdatesAsync(LOCATION_TRACKING_TASK))) {
-      await Location.startLocationUpdatesAsync(
-        LOCATION_TRACKING_TASK,
-        paused ? PAUSED_OPTIONS : TRACKING_OPTIONS
-      );
+      await Location.startLocationUpdatesAsync(LOCATION_TRACKING_TASK, TRACKING_OPTIONS);
     }
     return { background: true };
   }
-  if (paused) return { background: false };
   if (!foregroundSubscription) {
     foregroundSubscription = await Location.watchPositionAsync(
       {
@@ -200,24 +179,18 @@ export async function startDrive({ tripId = null } = {}) {
 }
 
 /**
- * Pause the active drive: tracking stops until resumeDrive, and nothing in
- * between counts as driving. On Android the notification stays, saying Paused.
+ * Pause the active drive: location updates stop (and with them the notification)
+ * until resumeDrive, and nothing in between counts as driving.
  */
 export async function pauseDrive() {
   await stopUpdates();
-  const drive = await enqueue(async () => {
-    const active = await getActiveDrive();
-    if (!active) return null;
-    const stats = pauseStats(active.stats, Date.now());
-    await appendFixes(active.id, [], stats);
-    return { ...active, stats };
+  return enqueue(async () => {
+    const drive = await getActiveDrive();
+    if (!drive) return null;
+    const stats = pauseStats(drive.stats, Date.now());
+    await appendFixes(drive.id, [], stats);
+    return { ...drive, stats };
   });
-  if (drive && keepsPausedNotification) {
-    await startUpdates({ paused: true }).catch((err) =>
-      console.warn('[locationService] paused notification failed', err)
-    );
-  }
-  return drive;
 }
 
 /** Resume a paused drive. Call while the app is open (Android starts its service then). */
@@ -229,10 +202,7 @@ export async function resumeDrive() {
     await appendFixes(active.id, [], stats);
     return { ...active, stats };
   });
-  if (drive) {
-    await stopUpdates(); // the paused, low-power updates
-    await startUpdates();
-  }
+  if (drive) await startUpdates();
   return drive;
 }
 
@@ -288,10 +258,7 @@ export async function resumeActiveDrive() {
   const drive = await getActiveDrive();
   // Never prompt on launch; if access was revoked the dashboard still shows the drive.
   if (!drive || !(await getLocationAccess()).granted) return null;
-  // Paused: Record shows it, but tracking stays off until Resume (Android keeps the notification).
-  if (drive.stats.paused) {
-    if (keepsPausedNotification) return startUpdates({ paused: true });
-    return { background: await canTrackInBackground() };
-  }
+  // Paused: Record shows it, but GPS stays off until Resume.
+  if (drive.stats.paused) return { background: await canTrackInBackground() };
   return startUpdates();
 }

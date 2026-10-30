@@ -5,6 +5,7 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { useStyles, useTheme } from '../hooks/useTheme';
 import { radius, spacing, type } from '../theme';
+import DotMarker from './DotMarker';
 import MapDot from './MapDot';
 
 const MAP_PADDING = { top: 48, right: 48, bottom: 48, left: 48 };
@@ -85,7 +86,7 @@ export default function RouteMap({
             />
           ))}
           {markers.map((m, i) => (
-            <Marker
+            <DotMarker
               key={m.key}
               ref={(r) => {
                 if (r) markerRefs.current.set(m.key, r);
@@ -94,12 +95,11 @@ export default function RouteMap({
               coordinate={m.coordinate}
               title={m.title}
               description={m.description}
-              anchor={{ x: 0.5, y: 0.5 }}
               zIndex={i}
-              tracksViewChanges={false}
+              redrawKey={m.color}
             >
               <MapDot kind={m.kind} color={m.color} />
-            </Marker>
+            </DotMarker>
           ))}
           {highlight ? (
             <Marker

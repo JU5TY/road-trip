@@ -113,13 +113,13 @@ export function tripKicker(firstStartTs, lastEndTs, dayCount, { withYear = false
   return `${formatDayDate(firstStartTs)} · ${formatTime(firstStartTs)}`.toUpperCase();
 }
 
-/** Break reminder setting: 0 -> "Off", 90 -> "Every 1½ hours", 120 -> "Every 2 hours". */
+/**
+ * Break reminder setting, in the app's duration style: 0 -> "Off",
+ * 90 -> "Every 1h 30m", 120 -> "Every 2h".
+ */
 export function formatBreakReminder(minutes) {
   if (!minutes) return 'Off';
-  const hours = minutes / 60;
-  const whole = Math.floor(hours);
-  const text = hours === whole ? String(whole) : `${whole}½`;
-  return `Every ${text} ${hours === 1 ? 'hour' : 'hours'}`;
+  return `Every ${formatDurationShort(minutes * 60000).replace(/ 0m$/, '')}`;
 }
 
 /** "5 Nov 2026" */

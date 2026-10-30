@@ -1,7 +1,7 @@
 import { router } from 'expo-router';
 
 export const PREMIUM_PRICE = '£19.99';
-export const PREMIUM_TAGLINE = 'Make it yours, keep it safe, go deeper.';
+export const PREMIUM_TAGLINE = 'Make it yours and keep it safe.';
 
 /**
  * Whether Road Trip Premium is active. Payments aren't connected yet (they need

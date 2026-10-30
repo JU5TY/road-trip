@@ -31,7 +31,7 @@ const THEMES = [
   ['dark', 'Dark'],
 ];
 
-/** The blue Premium row near the top of You; opens the Premium screen. */
+/** The blue Premium card near the top of You (until Premium is bought); opens the Premium screen. */
 function PremiumRow() {
   const { c } = useTheme();
   const styles = useStyles(makeStyles);
@@ -153,7 +153,7 @@ export default function SettingsScreen() {
       <Text style={[type.headline, styles.h1]} role="heading">
         You
       </Text>
-      <PremiumRow />
+      {premium ? null : <PremiumRow />}
 
       <SectionHeader variant="label" title="Garage" />
       {(vehicles ?? []).map((v) => (
@@ -210,7 +210,8 @@ export default function SettingsScreen() {
         />
       ) : (
         <Text style={[type.small, styles.note]}>
-          Hidden across the app. Roads you drive are still counted, so nothing is lost.
+          Iconic Roads are hidden. Roads you drive still count, so they’ll be there if you turn
+          this back on.
         </Text>
       )}
 
@@ -255,13 +256,23 @@ export default function SettingsScreen() {
       />
 
       <SectionHeader variant="label" title="About" />
+      {/* Once bought, Premium is a quiet row here rather than a sales card at the top. */}
+      {premium ? (
+        <ListRow
+          icon="workspace_premium"
+          title="Premium"
+          value="Active"
+          onPress={openPremium}
+          divider
+        />
+      ) : null}
       <ListRow
         icon="lock"
         title="Privacy"
         onPress={() =>
           showMessage(
             'Privacy',
-            'Your trips stay on this phone. Your location and photos are never uploaded or shared.'
+            'Your trips stay on this phone and are never sent to us. Maps and place names come from Apple or Google.'
           )
         }
         divider

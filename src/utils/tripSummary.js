@@ -81,6 +81,13 @@ export function tripTitle(trip) {
   return trip.name || tripRouteLabel(trip);
 }
 
+/** Month and year of the first drive across `trips`: "June 2025" (Home and Your map). */
+export const firstDriveMonth = (trips) =>
+  new Date(Math.min(...trips.flatMap((t) => t.drives.map((d) => d.startedAt)))).toLocaleDateString(
+    undefined,
+    { month: 'long', year: 'numeric' }
+  );
+
 /** Body of the "Delete this trip?" dialog (Trips list and the Trip page). */
 export function deleteTripMessage(trip, fallbackName) {
   const name = tripTitle(trip) ?? fallbackName;

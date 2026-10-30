@@ -17,10 +17,10 @@ import { summarizeCountries } from '../utils/countries';
 import { driveGaps, routeSegments } from '../utils/crossings';
 import { distanceParts } from '../utils/format';
 import { getRoad } from '../utils/iconicRoads';
-import { computeTotals } from '../utils/tripSummary';
+import { computeTotals, firstDriveMonth } from '../utils/tripSummary';
 
 const MAX_MAP_POINTS = 6000; // across every drive, so a long history stays quick to draw
-const SHEET_HEIGHT = 136; // the totals sheet, kept clear when fitting the routes
+const SHEET_HEIGHT = 130; // the totals panel (above the nav inset), kept clear when fitting
 const POSITION_DELTA = 0.05;
 
 /** Every drive's route (all trips), thinned: [{ drive, points }]. Null while loading. */
@@ -55,6 +55,7 @@ function useEveryRoute() {
 export default function YourMapScreen() {
   const { units, showIconicRoads } = useSettings();
   const { c, scheme } = useTheme();
+  const dark = scheme === 'dark';
   const styles = useStyles(makeStyles);
   const insets = useSafeAreaInsets();
   const mapRef = useRef(null);
@@ -87,7 +88,12 @@ export default function YourMapScreen() {
     const all = segments.flatMap((s) => s.coordinates);
     if (all.length < 2) return;
     mapRef.current?.fitToCoordinates(all, {
-      edgePadding: { top: insets.top + 72, right: 32, bottom: SHEET_HEIGHT + 24, left: 32 },
+      edgePadding: {
+        top: insets.top + 72,
+        right: 32,
+        bottom: SHEET_HEIGHT + insets.bottom + 24,
+        left: 32,
+      },
       animated: false,
     });
   };
@@ -100,11 +106,12 @@ export default function YourMapScreen() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [segments]);
 
+  // Without location (never prompted for here), it re-fits to every route instead.
   const centreOnMe = async () => {
-    // Never prompt just for this; without access the button does nothing.
-    if (!(await getLocationAccess()).granted) return;
-    const pos = await Location.getLastKnownPositionAsync();
-    if (!pos) return;
+    const pos = (await getLocationAccess()).granted
+      ? await Location.getLastKnownPositionAsync()
+      : null;
+    if (!pos) return fit();
     mapRef.current?.animateToRegion(
       {
         latitude: pos.coords.latitude,
@@ -118,7 +125,7 @@ export default function YourMapScreen() {
 
   const trips = data?.trips ?? [];
   const totals = computeTotals(trips);
-  const distance = distanceParts(totals.distanceM, units);
+  const distance = distanceParts(totals.distanceM, units, { whole: true });
   const countryCount = summarizeCountries(
     trips
       .flatMap((t) => t.drives)
@@ -157,9 +164,10 @@ export default function YourMapScreen() {
           <Marker
             key={r.id}
             coordinate={r.coordinate}
-            title={r.name}
             anchor={{ x: 0.5, y: 0.5 }}
             tracksViewChanges={false}
+            accessibilityLabel={r.name}
+            onPress={() => router.push(`/roads/${r.id}`)}
           >
             <View style={styles.roadDot} />
           </Marker>
@@ -177,16 +185,14 @@ export default function YourMapScreen() {
         icon="my_location"
         variant="floating"
         accessibilityLabel="Centre on my position"
-        onPress={() => centreOnMe().catch(() => {})}
+        onPress={() => centreOnMe().catch(() => fit())}
         style={[styles.button, styles.right, { top: insets.top + 12 }]}
       />
 
-      <View
-        style={[styles.sheet, { paddingBottom: insets.bottom + 24 }]}
-        accessibilityLabel="All time totals"
-      >
-        <View style={styles.handle} />
-        <Text style={[type.label, styles.muted, styles.allTime]}>All time</Text>
+      <View style={[styles.sheet, dark && styles.sheetDark, { paddingBottom: insets.bottom + 24 }]}>
+        {trips.length > 0 ? (
+          <Text style={[type.bodyStrong, styles.since]}>Since {firstDriveMonth(trips)}</Text>
+        ) : null}
         <View style={styles.stats}>
           {stats.map(([value, unit]) => (
             <View key={unit} style={styles.stat}>
@@ -210,18 +216,17 @@ const makeStyles = (c) => ({
     height: 12,
     borderRadius: 6,
     borderWidth: 2,
-    borderColor: '#FFFFFF',
+    borderColor: c.card,
     backgroundColor: c.roadBadge,
   },
+  // A fixed panel, not a draggable sheet: square corners, no handle.
   sheet: {
     position: 'absolute',
     left: 0,
     right: 0,
     bottom: 0,
-    paddingTop: 10,
+    paddingTop: 20,
     paddingHorizontal: 16,
-    borderTopLeftRadius: 28,
-    borderTopRightRadius: 28,
     backgroundColor: c.card,
     shadowColor: '#000',
     shadowOpacity: 0.12,
@@ -229,22 +234,8 @@ const makeStyles = (c) => ({
     shadowOffset: { width: 0, height: -2 },
     elevation: 12,
   },
-  handle: {
-    width: 32,
-    height: 4,
-    borderRadius: 2,
-    alignSelf: 'center',
-    marginBottom: 12,
-    backgroundColor: c.track,
-  },
-  allTime: {
-    textAlign: 'center',
-    fontSize: 13,
-    lineHeight: 18,
-    letterSpacing: 0.8,
-    textTransform: 'uppercase',
-    marginBottom: 10,
-  },
+  sheetDark: { shadowOpacity: 0.5 },
+  since: { color: c.text, textAlign: 'center', marginBottom: 10 },
   stats: { flexDirection: 'row', paddingBottom: 4 },
   stat: { flex: 1, alignItems: 'center' },
   value: { color: c.accent, fontSize: 22, lineHeight: 28 },

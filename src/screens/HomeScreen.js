@@ -18,14 +18,7 @@ import { listTrips } from '../storage/tripStorage';
 import { radius, spacing, type } from '../theme';
 import { distanceParts } from '../utils/format';
 import { ICONIC_ROADS, getRoad } from '../utils/iconicRoads';
-import { computeTotals } from '../utils/tripSummary';
-
-/** Month and year of the first drive: "June 2025". */
-const firstDriveMonth = (trips) =>
-  new Date(Math.min(...trips.flatMap((t) => t.drives.map((d) => d.startedAt)))).toLocaleDateString(
-    undefined,
-    { month: 'long', year: 'numeric' }
-  );
+import { computeTotals, firstDriveMonth } from '../utils/tripSummary';
 
 /** The band at the top: the round Your map, the all-time distance and since when. */
 function MapHero({ trips, units, insetTop }) {

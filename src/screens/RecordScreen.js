@@ -3,7 +3,7 @@ import * as Location from 'expo-location';
 import { router, useFocusEffect, useIsFocused } from 'expo-router';
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { ActivityIndicator, Linking, Pressable, StyleSheet, Text, View } from 'react-native';
-import MapView, { Polyline } from 'react-native-maps';
+import MapView, { Marker, Polyline } from 'react-native-maps';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { showMessage } from '../components/ui/DialogHost';
@@ -23,14 +23,14 @@ import {
   startDrive,
   stopDrive,
 } from '../services/locationService';
-import { getActiveDrive, getDriveRoutePreview } from '../storage/driveStorage';
+import { getActiveDrive, getDriveEndpoints, getDriveRoutePreview } from '../storage/driveStorage';
 import { getRecordMapHidden, setRecordMapHidden } from '../storage/settingsStorage';
 import { getContinuableTrip, getTrip } from '../storage/tripStorage';
-import { spacing, type } from '../theme';
+import { dayColorFor, spacing, type } from '../theme';
 import { driveGaps, routeSegments } from '../utils/crossings';
 import { formatDistance, formatDurationShort, speedUnit, toSpeed } from '../utils/format';
 import { liveMetrics } from '../utils/geoMath';
-import { CONTINUE_WINDOW_MS, dayNumberFor, summarizeDrives, tripTitle } from '../utils/tripSummary';
+import { CONTINUE_WINDOW_MS, dayNumberFor, tripTitle } from '../utils/tripSummary';
 
 const GOOGLE_MAPS_NAV_URL = 'https://www.google.com/maps/dir/?api=1&travelmode=driving';
 const REFRESH_MS = 1000;
@@ -43,8 +43,9 @@ const BREAK_SOON_MS = 30 * 60 * 1000; // the break bar shows this long before a 
  * Map for Record: the live route so far (`segments`, pauses dotted) and the
  * phone's position. Centres on the latest fix (or the route) when asked through
  * `centreKey`. With `follow`, it also tracks each new fix until the map is moved by hand.
+ * `children` are drawn on the map (Ready's "finished in" chip).
  */
-function LiveMap({ segments = [], position, centreKey, follow = false }) {
+function LiveMap({ segments = [], position, centreKey, follow = false, children }) {
   const { scheme, c } = useTheme();
   const mapRef = useRef(null);
   const followingRef = useRef(true);
@@ -96,6 +97,7 @@ function LiveMap({ segments = [], position, centreKey, follow = false }) {
           {...(s.dotted ? { lineDashPattern: [1, 10], lineCap: 'round' } : null)}
         />
       ))}
+      {children}
     </MapView>
   );
 }
@@ -106,8 +108,8 @@ function KeepScreenOn() {
   return null;
 }
 
-/** Radio card for picking the trip on the Ready screen. */
-function TripOption({ icon, title, subtitle, selected, onPress }) {
+/** Radio card for picking the trip on the Ready screen: icon, one-line title, radio. */
+function TripOption({ icon, title, selected, onPress }) {
   const { c } = useTheme();
   const styles = useStyles(makeStyles);
   return (
@@ -124,12 +126,6 @@ function TripOption({ icon, title, subtitle, selected, onPress }) {
           numberOfLines={1}
         >
           {title}
-        </Text>
-        <Text
-          style={[type.small, selected ? styles.onContainerMuted : styles.muted]}
-          numberOfLines={1}
-        >
-          {subtitle}
         </Text>
       </View>
       <Icon
@@ -169,6 +165,8 @@ export default function RecordScreen() {
   const [confirmingStop, setConfirmingStop] = useState(false);
   const [centreKey, setCentreKey] = useState(0);
   const [here, setHere] = useState(null); // last known position, for the Ready map
+  // { tripId, coordinate }: where the trip Ready offers to continue last finished.
+  const [finishFor, setFinishFor] = useState(null);
 
   // Trip chosen before the permission check (null = new trip).
   const chosenTripRef = useRef(null);
@@ -211,6 +209,22 @@ export default function RecordScreen() {
       };
     }, [])
   );
+
+  // Where the continuable trip's last drive ended, for Ready's chip on the map.
+  const recentId = recent?.id;
+  const recentLastDriveId = recent?.drives.at(-1).id;
+  useEffect(() => {
+    if (!recentLastDriveId) return;
+    let cancelled = false;
+    getDriveEndpoints(recentLastDriveId)
+      .then(
+        (ends) => !cancelled && ends && setFinishFor({ tripId: recentId, coordinate: ends.last })
+      )
+      .catch((err) => console.warn('[record] finish point failed', err));
+    return () => {
+      cancelled = true;
+    };
+  }, [recentId, recentLastDriveId]);
 
   // Which trip and day the active drive belongs to.
   const activeId = drive?.id;
@@ -341,13 +355,41 @@ export default function RecordScreen() {
   if (!drive) {
     const canContinue = Boolean(recent);
     const continuing = canContinue && choice === 'continue';
-    const recentSummary = recent ? summarizeDrives(recent.drives) : null;
     const lastPlace = recent?.drives.at(-1).places.end;
+    const lastDay = recent ? dayNumberFor(recent.drives, recent.drives.at(-1).startedAt) : null;
+    // "Day N" only on a trip of two or more days; a one-day trip goes by its name.
+    const finishedLabel = recent
+      ? `${lastDay > 1 ? `Day ${lastDay}` : (tripTitle(recent) ?? 'Your trip')} finished ${
+          lastPlace ? `in ${lastPlace}` : 'here'
+        }`
+      : null;
+    const finish = canContinue && finishFor?.tripId === recent.id ? finishFor.coordinate : null;
     return (
       <View style={[styles.screen, styles.readyScreen]}>
         {permissionSheet}
         <View style={[styles.map, styles.mapShrink, { flexBasis: 380 + insets.top }]}>
-          <LiveMap position={here} centreKey={centreKey} />
+          <LiveMap position={here} centreKey={centreKey}>
+            {finish ? (
+              <Marker
+                coordinate={finish}
+                anchor={{ x: 0.5, y: 1 }}
+                tracksViewChanges={false}
+                accessibilityLabel={finishedLabel}
+              >
+                <View style={styles.finishedChip}>
+                  <Icon
+                    name="flag"
+                    filled
+                    size={18}
+                    color={lastDay > 1 ? dayColorFor(c, lastDay) : c.accent}
+                  />
+                  <Text style={[type.smallStrong, styles.text]} numberOfLines={1}>
+                    {finishedLabel}
+                  </Text>
+                </View>
+              </Marker>
+            ) : null}
+          </LiveMap>
           <IconButton
             icon="close"
             variant="floating"
@@ -369,7 +411,9 @@ export default function RecordScreen() {
           <View>
             <Text style={[type.title, styles.text, styles.readyTitle]}>Ready to go</Text>
             <Text style={[type.body, styles.muted, styles.readyTitle]}>
-              {canContinue ? 'Pick up your trip or start a new one' : 'Starts a new trip'}
+              {canContinue
+                ? 'Pick up your trip or start a new one'
+                : 'Your drive will start a new trip'}
             </Text>
           </View>
           {canContinue ? (
@@ -377,27 +421,17 @@ export default function RecordScreen() {
               <TripOption
                 icon="play_arrow"
                 title={`Continue ${tripTitle(recent) ?? 'last trip'}`}
-                subtitle={[
-                  `Day ${dayNumberFor(recent.drives, now)}`,
-                  ...(lastPlace ? [`from ${lastPlace}`] : []),
-                  `${formatDistance(recentSummary.distanceM, units, 0)} so far`,
-                ].join(' · ')}
                 selected={continuing}
                 onPress={() => setChoice('continue')}
               />
               <TripOption
                 icon="add_location_alt"
                 title="New trip"
-                subtitle="Start a fresh trip"
                 selected={!continuing}
                 onPress={() => setChoice('new')}
               />
             </View>
-          ) : (
-            <Text style={[type.body, styles.muted, styles.readyHint]}>
-              Drive again within 3 days and you can add it as the next day.
-            </Text>
-          )}
+          ) : null}
           <View style={styles.startWrap}>
             {busy ? (
               <ActivityIndicator color={c.accent} style={styles.startBusy} />
@@ -694,6 +728,18 @@ const makeStyles = (c) => ({
   onContainerMuted: { color: c.accentContainerMuted },
 
   readyScreen: { backgroundColor: c.background },
+  finishedChip: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    maxWidth: 260,
+    height: 32,
+    paddingHorizontal: 12,
+    borderRadius: 16,
+    marginBottom: 4, // sits just above the finish point
+    backgroundColor: c.floating,
+    ...c.cardShadow,
+  },
   readyBody: {
     flexGrow: 1,
     flexShrink: 0,
@@ -703,9 +749,9 @@ const makeStyles = (c) => ({
     paddingVertical: 20,
   },
   readyTitle: { marginHorizontal: 4 },
-  readyHint: { marginHorizontal: 4 },
   options: { gap: 8 },
   option: {
+    minHeight: 68,
     flexDirection: 'row',
     alignItems: 'center',
     gap: 14,

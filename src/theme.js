@@ -4,6 +4,7 @@
 const light = {
   background: '#F8F9FA', // the page behind cards
   card: '#FFFFFF', // cards, rows groups, sheets
+  band: '#FFFFFF', // Home's top band behind Your map (the page itself in dark)
   surface: '#FFFFFF', // stat tiles and other card-like blocks
   surfaceLow: '#FFFFFF',
   track: '#E8EAED', // segmented switch, search button, chips at rest
@@ -80,6 +81,7 @@ const light = {
 const dark = {
   background: '#202124',
   card: '#2C2D31',
+  band: '#202124',
   surface: '#2C2D31',
   surfaceLow: '#2C2D31',
   track: '#3C4043',

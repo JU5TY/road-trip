@@ -84,7 +84,14 @@ export default function RoadsScreen() {
           {completedCount} completed · {ICONIC_ROADS.length - completedCount} to go
         </Text>
       </View>
-      <View style={styles.chips} role="radiogroup">
+      {/* One row that scrolls sideways, edge to edge, as more countries get roads. */}
+      <ScrollView
+        horizontal
+        showsHorizontalScrollIndicator={false}
+        style={styles.chipScroll}
+        contentContainerStyle={styles.chips}
+        role="radiogroup"
+      >
         {COUNTRIES.map((name) => (
           <Chip
             key={name}
@@ -93,7 +100,7 @@ export default function RoadsScreen() {
             onPress={() => setCountry(name)}
           />
         ))}
-      </View>
+      </ScrollView>
 
       {done.length > 0 ? (
         <>
@@ -146,7 +153,8 @@ const makeStyles = (c) => ({
   h1: { alignSelf: 'stretch', color: c.text, marginHorizontal: 4, marginBottom: 12 },
   text: { color: c.text },
   summary: { marginTop: 14 },
-  chips: { flexDirection: 'row', flexWrap: 'wrap', gap: 8, marginTop: spacing.md },
+  chipScroll: { marginHorizontal: -spacing.md, marginTop: spacing.md, flexGrow: 0 },
+  chips: { gap: 8, paddingHorizontal: spacing.md },
   chip: {
     flexDirection: 'row',
     alignItems: 'center',

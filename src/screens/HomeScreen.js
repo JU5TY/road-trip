@@ -1,5 +1,5 @@
 import { router, useFocusEffect, useIsFocused } from 'expo-router';
-import { useCallback, useMemo, useState } from 'react';
+import { useCallback, useState } from 'react';
 import { ActivityIndicator, Pressable, ScrollView, Text, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
@@ -25,7 +25,6 @@ import { computeTotals } from '../utils/tripSummary';
 function MapBand({ trips, units, insetTop }) {
   const { c } = useTheme();
   const styles = useStyles(makeStyles);
-  const drives = useMemo(() => trips.flatMap((t) => t.drives), [trips]);
   const totals = computeTotals(trips);
   const distance = distanceParts(totals.distanceM, units);
   const stats = [
@@ -38,12 +37,11 @@ function MapBand({ trips, units, insetTop }) {
       <Text style={[type.headline, styles.h1]} role="heading">
         Road Trip
       </Text>
-      <YourMap drives={drives} />
+      <YourMap trips={trips} />
       <View style={styles.mapCaption}>
         <Icon name="map" size={22} color={c.accent} />
-        <Text style={[type.section, styles.text, styles.regular]}>Your map</Text>
-        <Text style={[type.section, styles.muted]}>·</Text>
-        <Text style={[type.body, styles.muted]}>every road you&apos;ve driven</Text>
+        <Text style={[type.section, styles.text, styles.regular, styles.flex]}>Your map</Text>
+        <Text style={[type.label, styles.muted, styles.allTime]}>All time</Text>
       </View>
       <View style={styles.stats}>
         {stats.map(([value, unit]) => (
@@ -178,7 +176,7 @@ const makeStyles = (c) => ({
     paddingHorizontal: spacing.md,
     paddingBottom: 28,
     alignItems: 'center',
-    backgroundColor: c.card,
+    backgroundColor: c.band,
   },
   h1: {
     alignSelf: 'stretch',
@@ -188,8 +186,17 @@ const makeStyles = (c) => ({
     height: 56,
     textAlignVertical: 'center',
   },
-  mapCaption: { flexDirection: 'row', alignItems: 'center', gap: 8, marginTop: 18 },
-  stats: { flexDirection: 'row', alignSelf: 'stretch', marginTop: 24 },
+  mapCaption: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    alignSelf: 'stretch',
+    gap: 8,
+    marginTop: 16,
+    marginHorizontal: 4,
+  },
+  flex: { flex: 1 },
+  allTime: { fontSize: 13, lineHeight: 18, letterSpacing: 0.8, textTransform: 'uppercase' },
+  stats: { flexDirection: 'row', alignSelf: 'stretch', marginTop: 14 },
   stat: { flex: 1, alignItems: 'center' },
   statValue: { color: c.accent, fontSize: 30, lineHeight: 36 },
   text: { color: c.text },

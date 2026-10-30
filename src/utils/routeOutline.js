@@ -1,10 +1,10 @@
 /**
- * Fit routes (arrays of { latitude, longitude }) inside a circle `size` px
- * across, for flat drawings that need no map. Returns { project, points }:
- * project(p) → [x, y], points(route) → an SVG polyline `points` string. Null
- * when there are fewer than two points to draw.
+ * Fit routes (arrays of { latitude, longitude }) inside a `width` × `height`
+ * box, `margin` px in from each edge, for flat drawings that need no map.
+ * Returns { project, points }: project(p) → [x, y], points(route) → an SVG
+ * polyline `points` string. Null when there are fewer than two points to draw.
  */
-export function fitInCircle(routes, size) {
+export function fitInBox(routes, width, height, margin = 0) {
   const all = routes.flat();
   if (all.length < 2) return null;
   const lats = all.map((p) => p.latitude);
@@ -15,11 +15,12 @@ export function fitInCircle(routes, size) {
   const maxX = Math.max(...lngs) * k;
   const minY = Math.min(...lats);
   const maxY = Math.max(...lats);
-  // A square inscribed in the circle, plus a margin.
-  const box = (size / Math.SQRT2) * 0.92;
-  const scale = box / Math.max(maxX - minX, maxY - minY, 1e-6);
-  const cx = size / 2 - ((minX + maxX) / 2) * scale;
-  const cy = size / 2 + ((minY + maxY) / 2) * scale;
+  const scale = Math.min(
+    (width - 2 * margin) / Math.max(maxX - minX, 1e-6),
+    (height - 2 * margin) / Math.max(maxY - minY, 1e-6)
+  );
+  const cx = width / 2 - ((minX + maxX) / 2) * scale;
+  const cy = height / 2 + ((minY + maxY) / 2) * scale;
   const project = (p) => [cx + p.longitude * k * scale, cy - p.latitude * scale];
   const points = (route) =>
     route
@@ -30,4 +31,10 @@ export function fitInCircle(routes, size) {
       )
       .join(' ');
   return { project, points };
+}
+
+/** fitInBox for a circle `size` px across: the routes fill a square inscribed in it, plus a margin. */
+export function fitInCircle(routes, size) {
+  const box = (size / Math.SQRT2) * 0.92;
+  return fitInBox(routes, size, size, (size - box) / 2);
 }

@@ -1,19 +1,23 @@
 import { router } from 'expo-router';
 import { useEffect, useMemo, useState } from 'react';
 import { Pressable, View } from 'react-native';
-import Svg, { Polyline, Rect } from 'react-native-svg';
+import Svg, { Circle, Polyline } from 'react-native-svg';
 
 import { useStyles, useTheme } from '../../hooks/useTheme';
 import { getDriveRoutePreview } from '../../storage/driveStorage';
 import { dayColorFor } from '../../theme';
 import { driveGaps, splitAtCrossings } from '../../utils/crossings';
-import { fitInBox } from '../../utils/routeOutline';
+import { fitInCircle } from '../../utils/routeOutline';
 import { groupIntoDays } from '../../utils/tripSummary';
 import Icon from '../ui/Icon';
 
-const HEIGHT = 180;
-const MARGIN = 14; // keep routes clear of the rounded corners
+const SIZE = 216;
+const INNER = SIZE - 2; // inside the 1 px border
 const POINTS_PER_DRIVE = 80;
+
+// The last routes drawn, so coming back to Home doesn't reload every drive.
+// Replaced when a drive is saved or deleted (the key changes).
+let cached = { key: null, parts: [] };
 
 /**
  * Every drive's route, thinned and split at its crossings and pauses:
@@ -24,8 +28,9 @@ const POINTS_PER_DRIVE = 80;
 function useAllRoutes(trips) {
   const drives = useMemo(() => trips.flatMap((t) => t.drives), [trips]);
   const key = drives.map((d) => `${d.id}:${driveGaps(d).length}`).join(',');
-  const [parts, setParts] = useState([]);
+  const [loaded, setLoaded] = useState(cached);
   useEffect(() => {
+    if (cached.key === key) return;
     let cancelled = false;
     const latestDay = new Map(
       groupIntoDays(trips[0]?.drives ?? []).flatMap((day) =>
@@ -35,14 +40,14 @@ function useAllRoutes(trips) {
     Promise.all(drives.map((d) => getDriveRoutePreview(d.id, POINTS_PER_DRIVE)))
       .then((all) => {
         if (cancelled) return;
-        setParts(
-          all.flatMap((r, i) =>
-            splitAtCrossings(r, driveGaps(drives[i])).map((p) => ({
-              ...p,
-              day: latestDay.get(drives[i].id) ?? null,
-            }))
-          )
+        const next = all.flatMap((r, i) =>
+          splitAtCrossings(r, driveGaps(drives[i])).map((p) => ({
+            ...p,
+            day: latestDay.get(drives[i].id) ?? null,
+          }))
         );
+        cached = { key, parts: next };
+        setLoaded(cached);
       })
       .catch((err) => console.warn('[your map] load failed', err));
     return () => {
@@ -51,31 +56,27 @@ function useAllRoutes(trips) {
     // Only re-run when the drives change, not on every new array.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [key]);
-  return parts;
+  // The cache when it matches (another visit loaded it), else the last load.
+  return (cached.key === key ? cached : loaded).parts;
 }
 
 /**
- * Home's "Your map": every road you've driven, drawn flat (no map to load) and
- * fitted to the box. The latest trip is bold in its day colours, everything
- * else faint blue; ferries, tunnels and pauses are dotted. Opens the full map.
- * `trips` newest first.
+ * Home's round "Your map": every road you've driven, drawn flat (no map to
+ * load) and fitted inside the circle. The latest trip is bold in its day
+ * colours, everything else faint blue; ferries, tunnels and pauses are dotted.
+ * Opens the full map. `trips` newest first.
  */
 export default function YourMap({ trips }) {
   const { c } = useTheme();
   const styles = useStyles(makeStyles);
   const parts = useAllRoutes(trips);
-  const [width, setWidth] = useState(0);
   const multiDay = groupIntoDays(trips[0]?.drives ?? []).length > 1;
 
   const lines = useMemo(() => {
-    const fit = width
-      ? fitInBox(
-          parts.map((p) => p.coordinates),
-          width,
-          HEIGHT,
-          MARGIN
-        )
-      : null;
+    const fit = fitInCircle(
+      parts.map((p) => p.coordinates),
+      INNER
+    );
     if (!fit) return [];
     const line = (p) => ({ points: fit.points(p.coordinates), dotted: p.crossing !== null });
     // Older routes first, so the latest trip is drawn on top.
@@ -89,19 +90,18 @@ export default function YourMap({ trips }) {
           color: multiDay ? dayColorFor(c, p.day) : c.accent,
         })),
     ];
-  }, [parts, width, multiDay, c]);
+  }, [parts, multiDay, c]);
 
   return (
     <Pressable
       onPress={() => router.push('/your-map')}
-      onLayout={(e) => setWidth(e.nativeEvent.layout.width)}
       accessibilityRole="button"
-      accessibilityLabel="Open your map: every road you've driven"
+      accessibilityLabel="Open your map"
       style={({ pressed }) => [styles.wrap, pressed && styles.pressed]}
     >
-      {width ? (
-        <Svg width={width} height={HEIGHT}>
-          <Rect width={width} height={HEIGHT} fill={c.mapLand} />
+      <View style={styles.circle}>
+        <Svg width={INNER} height={INNER}>
+          <Circle cx={INNER / 2} cy={INNER / 2} r={INNER / 2} fill={c.mapLand} />
           {lines.map((l, i) => (
             <Polyline
               key={i}
@@ -116,7 +116,7 @@ export default function YourMap({ trips }) {
             />
           ))}
         </Svg>
-      ) : null}
+      </View>
       <View style={styles.expand}>
         <Icon name="open_in_full" size={20} color={c.text} />
       </View>
@@ -125,21 +125,32 @@ export default function YourMap({ trips }) {
 }
 
 const makeStyles = (c) => ({
+  // The shadow sits here, as the clipped circle inside would cut it off on iOS.
   wrap: {
-    alignSelf: 'stretch',
-    height: HEIGHT,
-    borderRadius: 16,
+    width: SIZE,
+    height: SIZE,
+    borderRadius: SIZE / 2,
+    backgroundColor: c.mapLand,
+    ...c.mapRingShadow,
+  },
+  circle: {
+    width: SIZE,
+    height: SIZE,
+    borderRadius: SIZE / 2,
+    borderWidth: 1,
+    borderColor: c.mapBorder,
     overflow: 'hidden',
     backgroundColor: c.mapLand,
   },
   pressed: { opacity: 0.9 },
+  // Overlaps the circle's bottom-right edge.
   expand: {
     position: 'absolute',
-    top: 10,
-    right: 10,
-    width: 36,
-    height: 36,
-    borderRadius: 18,
+    right: 4,
+    bottom: 4,
+    width: 40,
+    height: 40,
+    borderRadius: 20,
     alignItems: 'center',
     justifyContent: 'center',
     backgroundColor: c.floating,

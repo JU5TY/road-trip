@@ -77,10 +77,13 @@ export const formatDayDate = (ts) =>
 const grouped = (n, digits = 0) =>
   n.toLocaleString(undefined, { minimumFractionDigits: digits, maximumFractionDigits: digits });
 
-/** Hero distance split for big type: 780 km -> { value: '780', unit: 'km' }; one decimal under 100. */
-export function distanceParts(meters, units) {
+/**
+ * Hero distance split for big type: 780 km -> { value: '780', unit: 'km' }; one
+ * decimal under 100, unless `whole`.
+ */
+export function distanceParts(meters, units, { whole = false } = {}) {
   const v = toDistance(meters, units);
-  return { value: grouped(v, v < 100 ? 1 : 0), unit: distanceUnit(units) };
+  return { value: grouped(v, v < 100 && !whole ? 1 : 0), unit: distanceUnit(units) };
 }
 
 /** Elevation split for stat cards: { value: '4,850', unit: 'm' }, or '—' when unknown. */

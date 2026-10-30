@@ -8,7 +8,6 @@ import YourMap from '../components/home/YourMap';
 import MapIllustration from '../components/MapIllustration';
 import RoadsProgress from '../components/roads/RoadsProgress';
 import TripCard from '../components/TripCard';
-import Icon from '../components/ui/Icon';
 import SectionHeader from '../components/ui/SectionHeader';
 import CountriesCard from '../components/home/CountriesCard';
 import { useSettings } from '../context/SettingsContext';
@@ -21,36 +20,25 @@ import { distanceParts } from '../utils/format';
 import { ICONIC_ROADS, getRoad } from '../utils/iconicRoads';
 import { computeTotals } from '../utils/tripSummary';
 
-/** The white band at the top: title, Your map and all-time totals. */
-function MapBand({ trips, units, insetTop }) {
-  const { c } = useTheme();
+/** Month and year of the first drive: "June 2025". */
+const firstDriveMonth = (trips) =>
+  new Date(Math.min(...trips.flatMap((t) => t.drives.map((d) => d.startedAt)))).toLocaleDateString(
+    undefined,
+    { month: 'long', year: 'numeric' }
+  );
+
+/** The band at the top: the round Your map, the all-time distance and since when. */
+function MapHero({ trips, units, insetTop }) {
   const styles = useStyles(makeStyles);
-  const totals = computeTotals(trips);
-  const distance = distanceParts(totals.distanceM, units);
-  const stats = [
-    [distance.value, distance.unit],
-    [String(totals.tripCount), totals.tripCount === 1 ? 'trip' : 'trips'],
-    [String(totals.drivingDays), totals.drivingDays === 1 ? 'day' : 'days'],
-  ];
+  const distance = distanceParts(computeTotals(trips).distanceM, units, { whole: true });
   return (
-    <View style={[styles.band, { paddingTop: insetTop + spacing.md }]}>
-      <Text style={[type.headline, styles.h1]} role="heading">
-        Road Trip
-      </Text>
+    <View style={[styles.band, { paddingTop: insetTop + 40 }]}>
       <YourMap trips={trips} />
-      <View style={styles.mapCaption}>
-        <Icon name="map" size={22} color={c.accent} />
-        <Text style={[type.section, styles.text, styles.regular, styles.flex]}>Your map</Text>
-        <Text style={[type.label, styles.muted, styles.allTime]}>All time</Text>
-      </View>
-      <View style={styles.stats}>
-        {stats.map(([value, unit]) => (
-          <View key={unit} style={styles.stat}>
-            <Text style={[type.stat, styles.statValue]}>{value}</Text>
-            <Text style={[type.bodyLarge, styles.text]}>{unit}</Text>
-          </View>
-        ))}
-      </View>
+      <Text style={styles.total}>
+        {distance.value}
+        <Text style={styles.totalUnit}> {distance.unit}</Text>
+      </Text>
+      <Text style={[type.bodyLarge, styles.muted]}>driven since {firstDriveMonth(trips)}</Text>
     </View>
   );
 }
@@ -125,9 +113,6 @@ export default function HomeScreen() {
         style={styles.screen}
         contentContainerStyle={[styles.content, { paddingTop: insets.top + spacing.md }]}
       >
-        <Text style={[type.headline, styles.h1]} role="heading">
-          Road Trip
-        </Text>
         <SectionHeader variant="overline" title="Latest trip" style={styles.emptyHeader} />
         <View style={styles.emptyCard}>
           <MapIllustration height={140} />
@@ -145,7 +130,7 @@ export default function HomeScreen() {
 
   return (
     <ScrollView style={styles.screen} contentContainerStyle={styles.content}>
-      <MapBand trips={trips} units={units} insetTop={insets.top} />
+      <MapHero trips={trips} units={units} insetTop={insets.top} />
       <WeekDistance trips={trips} units={units} now={now} />
       <SectionHeader
         variant="overline"
@@ -178,33 +163,20 @@ const makeStyles = (c) => ({
     alignItems: 'center',
     backgroundColor: c.band,
   },
-  h1: {
-    alignSelf: 'stretch',
-    color: c.text,
-    marginHorizontal: 4,
-    marginVertical: 8,
-    height: 56,
-    textAlignVertical: 'center',
-  },
-  mapCaption: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    alignSelf: 'stretch',
-    gap: 8,
+  total: {
+    fontFamily: type.stat.fontFamily,
+    fontSize: 44,
+    lineHeight: 52,
+    letterSpacing: -0.5,
+    color: c.accent,
     marginTop: 16,
-    marginHorizontal: 4,
   },
-  flex: { flex: 1 },
-  allTime: { fontSize: 13, lineHeight: 18, letterSpacing: 0.8, textTransform: 'uppercase' },
-  stats: { flexDirection: 'row', alignSelf: 'stretch', marginTop: 14 },
-  stat: { flex: 1, alignItems: 'center' },
-  statValue: { color: c.accent, fontSize: 30, lineHeight: 36 },
+  totalUnit: { fontSize: 20 },
   text: { color: c.text },
-  regular: { fontFamily: type.bodyLarge.fontFamily },
   muted: { color: c.textMuted },
   mutedSmall: { color: c.textMuted, fontSize: 14, lineHeight: 20 },
   roadsHint: { color: c.textMuted, fontSize: 14, lineHeight: 20, marginTop: 14 },
-  emptyHeader: { marginTop: 8 }, // 16 under the title, with its 8
+  emptyHeader: { marginTop: 8 }, // 24 from the top, with the screen's 16
   emptyCard: {
     borderRadius: radius.card,
     overflow: 'hidden',

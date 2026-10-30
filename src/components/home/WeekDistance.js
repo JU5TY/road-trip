@@ -1,4 +1,5 @@
 import { router } from 'expo-router';
+import { useState } from 'react';
 import { Pressable, Text, View } from 'react-native';
 import Svg, { Rect, Text as SvgText } from 'react-native-svg';
 
@@ -8,7 +9,6 @@ import { distanceParts } from '../../utils/format';
 import Icon from '../ui/Icon';
 
 const DAYS = 7;
-const CHART_W = 206;
 const CHART_H = 98;
 const BAR_W = 16;
 const BAR_MAX = 64; // tallest bar
@@ -35,14 +35,23 @@ export function lastSevenDays(trips, now = Date.now()) {
   return days;
 }
 
-/** "Distance · Last 7 days" card: today's distance and a bar per day. Opens Trips. */
+/**
+ * "Distance · Last 7 days" card: today's distance (or, on a day without driving,
+ * the week's total) and a bar per day. Opens Trips. Hidden after a week without
+ * driving. The bars spread over whatever width the phone leaves (206 on the
+ * 390-wide design).
+ */
 export default function WeekDistance({ trips, units, now }) {
   const { c } = useTheme();
   const styles = useStyles(makeStyles);
+  const [chartW, setChartW] = useState(0);
   const days = lastSevenDays(trips, now);
+  const weekM = days.reduce((sum, d) => sum + d.metres, 0);
+  if (weekM === 0) return null;
   const max = Math.max(...days.map((d) => d.metres), 1);
-  const today = distanceParts(days.at(-1).metres, units);
-  const step = (CHART_W - BAR_W) / (DAYS - 1);
+  const droveToday = days.at(-1).metres > 0;
+  const shown = distanceParts(droveToday ? days.at(-1).metres : weekM, units);
+  const step = (chartW - BAR_W) / (DAYS - 1);
   const label = days
     .map(
       (d) =>
@@ -65,46 +74,52 @@ export default function WeekDistance({ trips, units, now }) {
       </View>
       <View style={styles.body}>
         <View style={styles.today}>
-          <Text style={[type.statLarge, styles.value]} numberOfLines={1}>
-            {today.value}
-            <Text style={type.statUnit}> {today.unit}</Text>
+          <Text style={[type.statLarge, styles.value]} numberOfLines={1} adjustsFontSizeToFit>
+            {shown.value}
+            <Text style={type.statUnit}> {shown.unit}</Text>
           </Text>
-          <Text style={[type.label, styles.value, styles.todayLabel]}>Today</Text>
+          <Text style={[type.label, styles.value, styles.todayLabel]}>
+            {droveToday ? 'Today' : 'In total'}
+          </Text>
         </View>
-        <Svg
-          width={CHART_W}
-          height={CHART_H}
-          accessible
-          accessibilityLabel={`Distance per day: ${label}`}
-        >
-          {days.map((d, i) => {
-            const h = d.metres > 0 ? Math.max(6, (d.metres / max) * BAR_MAX) : 3;
-            const x = i * step;
-            const isToday = i === DAYS - 1;
-            return [
-              <Rect
-                key={`b${i}`}
-                x={x}
-                y={BASE_Y - h}
-                width={BAR_W}
-                height={h}
-                rx={3}
-                fill={d.metres > 0 ? c.accent : c.progressTrack}
-              />,
-              <SvgText
-                key={`l${i}`}
-                x={x + BAR_W / 2}
-                y={94}
-                fontSize={13}
-                fontFamily={isToday ? fonts.semibold : type.body.fontFamily}
-                fill={isToday ? c.text : c.textMuted}
-                textAnchor="middle"
-              >
-                {d.date.toLocaleDateString(undefined, { weekday: 'narrow' })}
-              </SvgText>,
-            ];
-          })}
-        </Svg>
+        <View style={styles.chart} onLayout={(e) => setChartW(e.nativeEvent.layout.width)}>
+          {chartW > 0 ? (
+            <Svg
+              width={chartW}
+              height={CHART_H}
+              accessible
+              accessibilityLabel={`Distance per day: ${label}`}
+            >
+              {days.map((d, i) => {
+                const h = d.metres > 0 ? Math.max(6, (d.metres / max) * BAR_MAX) : 3;
+                const x = i * step;
+                const isToday = i === DAYS - 1;
+                return [
+                  <Rect
+                    key={`b${i}`}
+                    x={x}
+                    y={BASE_Y - h}
+                    width={BAR_W}
+                    height={h}
+                    rx={3}
+                    fill={d.metres > 0 ? c.accent : c.progressTrack}
+                  />,
+                  <SvgText
+                    key={`l${i}`}
+                    x={x + BAR_W / 2}
+                    y={94}
+                    fontSize={13}
+                    fontFamily={isToday ? fonts.semibold : type.body.fontFamily}
+                    fill={isToday ? c.text : c.textMuted}
+                    textAnchor="middle"
+                  >
+                    {d.date.toLocaleDateString(undefined, { weekday: 'narrow' })}
+                  </SvgText>,
+                ];
+              })}
+            </Svg>
+          ) : null}
+        </View>
       </View>
     </Pressable>
   );
@@ -127,6 +142,7 @@ const makeStyles = (c) => ({
   sub: { fontFamily: type.body.fontFamily, marginTop: 2 },
   body: { flexDirection: 'row', alignItems: 'flex-end', gap: 12, marginTop: 14 },
   today: { width: 92, paddingBottom: 20 },
+  chart: { flex: 1, height: CHART_H },
   value: { color: c.accent },
   todayLabel: { fontFamily: type.body.fontFamily, marginTop: 6 },
 });

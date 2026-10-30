@@ -8,10 +8,13 @@ import { radius, spacing, type } from '../theme';
 
 const MAP_PADDING = { top: 48, right: 48, bottom: 48, left: 48 };
 const FOCUS_DELTA = 0.01; // ~1 km across when zooming to a single marker
+// Round caps make each dash a dot (Google Maps on Android draws true dots).
+const DOTS = { lineDashPattern: [1, 10], lineCap: 'round' };
 
 /**
  * Map of one or more route segments.
- * segments: [{ key, coordinates: [{latitude, longitude}], color }]
+ * segments: [{ key, coordinates: [{latitude, longitude}], color, dotted? }]
+ *           (`dotted` for a ferry or tunnel crossing, see utils/crossings.js)
  * markers:  [{ key, coordinate, title, description?, color }]
  * highlight: optional { latitude, longitude } shown as a dot (e.g. while
  *            dragging across a chart).
@@ -75,6 +78,7 @@ export default function RouteMap({
               coordinates={s.coordinates}
               strokeColor={s.color}
               strokeWidth={5}
+              {...(s.dotted ? DOTS : null)}
             />
           ))}
           {markers.map((m) => (

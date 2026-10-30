@@ -1,11 +1,11 @@
 import { useMemo, useState } from 'react';
 import { Pressable, Text, View } from 'react-native';
 
+import { openPremium, usePremium } from '../../hooks/usePremium';
 import { useStyles, useTheme } from '../../hooks/useTheme';
 import { radius, type } from '../../theme';
-import { elevationSeries, speedByDistanceSeries } from '../../utils/chartData';
+import { elevationSeries, speedByDistanceSeries, stepDistance } from '../../utils/chartData';
 import { distanceUnit, formatElevation, speedUnit, toDistance, toSpeed } from '../../utils/format';
-import { haversineDistance } from '../../utils/geoMath';
 import Icon from '../ui/Icon';
 import SectionHeader from '../ui/SectionHeader';
 import LineChart from './LineChart';
@@ -22,8 +22,10 @@ const OPTIONS = [
 /**
  * "Charts" section: one chart with an Elevation | Speed switch, both against
  * distance from the start. `tracks` are the drives in order, each in its day's
- * colour: [{ key, color, points }]. `avgSpeedMps` draws the dashed Avg line.
- * `speedHidden` leaves only the elevation chart (times hidden for safety).
+ * colour: [{ key, color, points }], crossings left out (utils/crossings.js
+ * withoutCrossings). `avgSpeedMps` draws the dashed Avg line.
+ * `speedHidden` leaves only the elevation chart (times hidden for safety). The
+ * Speed chart is Premium: for a free user its switch opens the Premium screen.
  * `markers` ([{ time, label }]) mark moments on the elevation chart, e.g. borders.
  */
 export default function ChartsCard({
@@ -37,6 +39,7 @@ export default function ChartsCard({
   const { c } = useTheme();
   const styles = useStyles(makeStyles);
   const [choice, setChoice] = useState('elevation');
+  const premium = usePremium();
 
   const { elevation, speed, marks } = useMemo(() => {
     const perTrack = Math.max(60, Math.floor(TOTAL_POINTS / Math.max(1, tracks.length)));
@@ -64,7 +67,7 @@ export default function ChartsCard({
       );
       const xs = new Map(pending.map((m) => [m, offsetM]));
       for (let i = 1; i < t.points.length; i++) {
-        offsetM += haversineDistance(t.points[i - 1], t.points[i]);
+        offsetM += stepDistance(t.points[i - 1], t.points[i]);
         for (const m of pending) if (t.points[i].timestamp <= m.time) xs.set(m, offsetM);
       }
       for (const m of pending) mk.push({ x: xs.get(m), label: m.label });
@@ -74,11 +77,17 @@ export default function ChartsCard({
 
   const hasElevation = elevation.some((s) => s.data.length > 1);
   const hasSpeed = speed.some((s) => s.data.length > 1);
-  // With times hidden (a drive that is just an Iconic Road), only elevation is shown.
-  if (speedHidden ? !hasElevation : !hasSpeed) return null;
+  // With times hidden (a drive that is just an Iconic Road), or without Premium,
+  // only elevation is shown.
+  const elevationOnly = speedHidden || !premium;
+  if (elevationOnly ? !hasElevation : !hasSpeed) return null;
   const showing = speedHidden ? 'elevation' : hasElevation ? choice : 'speed';
 
   const select = (next) => {
+    if (next === 'speed' && !premium) {
+      openPremium();
+      return;
+    }
     onScrub?.(null);
     setChoice(next);
   };
@@ -101,7 +110,7 @@ export default function ChartsCard({
                   accessibilityRole="radio"
                   accessibilityState={{ checked: on }}
                 >
-                  {value === 'speed' ? (
+                  {value === 'speed' && !premium ? (
                     <Icon
                       name="workspace_premium"
                       filled

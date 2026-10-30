@@ -18,6 +18,7 @@ import Icon from '../components/ui/Icon';
 import SectionHeader from '../components/ui/SectionHeader';
 import { useSettings } from '../context/SettingsContext';
 import { usePhotos } from '../hooks/usePhotos';
+import { openPremium, usePremium } from '../hooks/usePremium';
 import { useStyles, useTheme } from '../hooks/useTheme';
 import { ensureDrivePlaces } from '../services/placeService';
 import { getDrivePoints } from '../storage/driveStorage';
@@ -33,6 +34,7 @@ import {
   formatTime,
   tripKicker,
 } from '../utils/format';
+import { driveGaps, routeSegments, withoutCrossings } from '../utils/crossings';
 import { averageMovingSpeed, downsample } from '../utils/geoMath';
 import { getRoad } from '../utils/iconicRoads';
 import { comingSoon } from '../utils/comingSoon';
@@ -124,6 +126,7 @@ function DayRow({ day, units, multiDay, isLast }) {
 export default function TripScreen() {
   const { id } = useLocalSearchParams();
   const { units, showIconicRoads } = useSettings();
+  const premium = usePremium();
   const { c } = useTheme();
   const styles = useStyles(makeStyles);
   const [trip, setTrip] = useState(null);
@@ -204,13 +207,16 @@ export default function TripScreen() {
     if (!trip || !pointsByDrive) return [];
     const perDrive = Math.max(200, Math.floor(MAX_MAP_POINTS / trip.drives.length));
     return days.flatMap((day) =>
-      day.drives.map((d) => ({
-        key: `drive-${d.id}`,
-        color: dayColorOf(day.number),
-        coordinates: downsample(pointsByDrive.get(d.id) ?? [], perDrive).map(
-          ({ latitude, longitude }) => ({ latitude, longitude })
-        ),
-      }))
+      day.drives.flatMap((d) =>
+        routeSegments(
+          `drive-${d.id}`,
+          downsample(pointsByDrive.get(d.id) ?? [], perDrive).map(
+            ({ latitude, longitude, timestamp }) => ({ latitude, longitude, timestamp })
+          ),
+          driveGaps(d),
+          dayColorOf(day.number)
+        )
+      )
     );
   }, [trip, pointsByDrive, days, dayColorOf]);
 
@@ -220,7 +226,7 @@ export default function TripScreen() {
         day.drives.map((d) => ({
           key: `drive-${d.id}`,
           color: dayColorOf(day.number),
-          points: pointsByDrive?.get(d.id) ?? [],
+          points: withoutCrossings(pointsByDrive?.get(d.id) ?? [], driveGaps(d)),
         }))
       ),
     [days, pointsByDrive, dayColorOf]
@@ -306,7 +312,11 @@ export default function TripScreen() {
       map={map}
       actions={[
         { icon: 'edit', label: 'Edit trip', onPress: () => setMenu('edit') },
-        { icon: 'download', label: 'Export', onPress: () => comingSoon('Exporting trips') },
+        {
+          icon: 'download',
+          label: 'Export',
+          onPress: premium ? () => comingSoon('Exporting trips') : openPremium,
+        },
         { icon: 'more_horiz', label: 'More options', onPress: () => setMenu('options') },
         { icon: 'ios_share', label: 'Share', primary: true, onPress: () => comingSoon('Sharing') },
       ]}

@@ -12,6 +12,7 @@ import { View } from 'react-native';
 import { SettingsProvider, useSettings } from '../context/SettingsContext';
 import { useTheme } from '../hooks/useTheme';
 import { checkAllCountriesIfNeeded } from '../storage/countryStorage';
+import { checkAllCrossingsIfNeeded } from '../storage/crossingStorage';
 import { checkAllDrivesIfNeeded } from '../storage/roadStorage';
 import { fontFiles } from '../theme';
 
@@ -35,8 +36,12 @@ function AppStack() {
         if (res) router.navigate('/record');
       })
       .catch((err) => console.warn('[app] resume failed', err));
-    // Check past drives against the Iconic Roads list (once per version of the list).
-    checkAllDrivesIfNeeded().catch((err) => console.warn('[app] Iconic Roads check failed', err));
+    // Find ferry and tunnel crossings on past drives, then check them against the
+    // Iconic Roads list (once per version of each). In turn: both rewrite drive stats.
+    checkAllCrossingsIfNeeded()
+      .catch((err) => console.warn('[app] crossings check failed', err))
+      .then(() => checkAllDrivesIfNeeded())
+      .catch((err) => console.warn('[app] Iconic Roads check failed', err));
     // And work out countries for drives recorded before Countries existed.
     checkAllCountriesIfNeeded().catch((err) => console.warn('[app] countries check failed', err));
   }, [ready, onboarded]);
@@ -62,6 +67,7 @@ function AppStack() {
           <Stack.Screen name="saved/[id]" options={{ gestureEnabled: false }} />
           <Stack.Screen name="roads/index" />
           <Stack.Screen name="roads/[id]" />
+          <Stack.Screen name="premium" />
         </Stack.Protected>
       </Stack>
     </>

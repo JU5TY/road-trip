@@ -7,7 +7,7 @@ import Icon from './Icon';
 /**
  * Round icon button. variant: 'floating' (white with shadow, over the map) |
  * 'surface' (grey) | 'record' (Record's controls) | 'filled' (blue) | 'stop' (red) |
- * 'plain' (no fill). With `label`, the caption sits under the circle (Record's
+ * 'pause' (near-black, white in dark mode) | 'plain' (no fill). With `label`, the caption sits under the circle (Record's
  * Maps / Stop row); `labelStyle` sets its size.
  */
 export default function IconButton({
@@ -30,9 +30,12 @@ export default function IconButton({
     record: c.recordControl,
     filled: c.accent,
     stop: c.stop,
+    pause: c.textStrong,
     plain: 'transparent',
   }[variant];
-  const fg = { filled: c.onAccent, stop: c.onStop, record: c.onRecordControl }[variant] ?? c.text;
+  const fg =
+    { filled: c.onAccent, stop: c.onStop, record: c.onRecordControl, pause: c.screen }[variant] ??
+    c.text;
 
   return (
     <Pressable

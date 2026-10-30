@@ -2,10 +2,15 @@
 // altitude, speed, timestamp }, oldest first). Pure functions: raw fixes are
 // noisy, so values are smoothed and thinned to a few hundred chart points.
 // Every datum keeps its coordinates so a chart can highlight it on the map.
+// Points from utils/crossings.js withoutCrossings() have the ferry or tunnel
+// left out; no distance is counted across one.
 import { haversineDistance } from './geoMath';
 
 const GAP_MS = 30 * 1000; // no fixes for this long = stationary (phones go quiet when parked)
 const MAX_PLAUSIBLE_SPEED_MPS = 90;
+
+/** Distance driven from the previous point: none across a ferry or tunnel. */
+export const stepDistance = (prev, p) => (p.afterCrossing ? 0 : haversineDistance(prev, p));
 
 /** Centered moving average of `y` over `window` points (odd), leaving other fields alone. */
 function smooth(data, window) {
@@ -44,7 +49,7 @@ export function elevationSeries(points, { offsetM = 0, maxPoints = 200 } = {}) {
   const data = [];
   let distance = offsetM;
   points.forEach((p, i) => {
-    if (i > 0) distance += haversineDistance(points[i - 1], p);
+    if (i > 0) distance += stepDistance(points[i - 1], p);
     if (p.altitude !== null && p.altitude !== undefined)
       data.push(toDatum(p, distance, p.altitude));
   });
@@ -56,7 +61,7 @@ export function elevationSeries(points, { offsetM = 0, maxPoints = 200 } = {}) {
 function speedAt(points, i) {
   const p = points[i];
   if (p.speed !== null && p.speed !== undefined) return p.speed;
-  if (i === 0) return 0;
+  if (i === 0 || p.afterCrossing) return 0;
   const prev = points[i - 1];
   const dt = (p.timestamp - prev.timestamp) / 1000;
   return dt > 0 ? haversineDistance(prev, p) / dt : 0;
@@ -74,8 +79,8 @@ export function speedByDistanceSeries(points, { offsetM = 0, maxPoints = 240 } =
   points.forEach((p, i) => {
     const prev = points[i - 1];
     if (prev) {
-      distance += haversineDistance(prev, p);
-      if (p.timestamp - prev.timestamp > GAP_MS && run.length > 0) {
+      distance += stepDistance(prev, p);
+      if ((p.afterCrossing || p.timestamp - prev.timestamp > GAP_MS) && run.length > 0) {
         runs.push(run);
         run = [];
       }

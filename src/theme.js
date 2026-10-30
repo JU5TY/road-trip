@@ -36,6 +36,7 @@ const light = {
   statAccentIconWell: '#E8F0FE',
   warningContainer: '#FEEFC3',
   onWarningContainer: '#5F3B00',
+  breakDue: '#E8710A', // Record's break bar once a break is due
   stop: '#D93025',
   onStop: '#FFFFFF',
   start: '#1E8E3E',
@@ -109,6 +110,7 @@ const dark = {
   statAccentIconWell: '#283A55',
   warningContainer: '#3D3214',
   onWarningContainer: '#FDD663',
+  breakDue: '#FCAD70',
   stop: '#F28B82',
   onStop: '#601410',
   start: '#34A853',

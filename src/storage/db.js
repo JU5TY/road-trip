@@ -10,6 +10,7 @@
 //           speed, accuracy, timestamp)
 //   road_completions (id, road_id, drive_id,              Iconic Roads completed on a drive
 //           completed_at)                                 (road ids from src/data/iconicRoads.json)
+//   drives.sea_crossings                                  ferry and tunnel crossings (JSON, utils/crossings.js)
 import * as SQLite from 'expo-sqlite';
 
 // The original (version 0) schema. Later versions are reached via MIGRATIONS.
@@ -95,6 +96,8 @@ const MIGRATIONS = [
     );
     ALTER TABLE drives ADD COLUMN vehicle_id INTEGER REFERENCES vehicles(id);
   `,
+  // 6: ferry and tunnel crossings on each drive (JSON, see utils/crossings.js).
+  'ALTER TABLE drives ADD COLUMN sea_crossings TEXT;',
 ];
 
 async function migrate(db) {

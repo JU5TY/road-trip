@@ -4,20 +4,29 @@ import Svg, { Circle, Polyline } from 'react-native-svg';
 
 import { useStyles, useTheme } from '../../hooks/useTheme';
 import { getDriveRoutePreview } from '../../storage/driveStorage';
+import { driveGaps, splitAtCrossings } from '../../utils/crossings';
 import { fitInCircle } from '../../utils/routeOutline';
 
 const SIZE = 184; // outer ring
 const INNER = 166; // drawn map
 const POINTS_PER_DRIVE = 80;
 
-/** Every drive's route, thinned. Reloads when the set of drives changes. */
+/**
+ * Every drive's route, thinned and split at its crossings and pauses ([{ coordinates,
+ * crossing }]), and where the latest one started. Reloads when the set of
+ * drives (or their gaps) changes.
+ */
 function useAllRoutes(drives) {
-  const key = drives.map((d) => d.id).join(',');
-  const [routes, setRoutes] = useState([]);
+  const key = drives.map((d) => `${d.id}:${driveGaps(d).length}`).join(',');
+  const [routes, setRoutes] = useState({ parts: [], latestStart: null });
   useEffect(() => {
     let cancelled = false;
     Promise.all(drives.map((d) => getDriveRoutePreview(d.id, POINTS_PER_DRIVE)))
-      .then((all) => !cancelled && setRoutes(all.filter((r) => r.length > 1)))
+      .then((all) => {
+        if (cancelled) return;
+        const parts = all.flatMap((r, i) => splitAtCrossings(r, driveGaps(drives[i])));
+        setRoutes({ parts, latestStart: all.findLast((r) => r.length > 1)?.[0] ?? null });
+      })
       .catch((err) => console.warn('[your map] load failed', err));
     return () => {
       cancelled = true;
@@ -29,35 +38,45 @@ function useAllRoutes(drives) {
 }
 
 /**
- * "Your map": every road you've driven, drawn in blue inside a circle. A plain
- * drawing rather than a live map, so it stays light with many drives. The dot
- * marks where your latest drive started.
+ * "Your map": every road you've driven, drawn in blue inside a circle, ferries,
+ * tunnels and pauses dotted. A plain drawing rather than a live map, so it stays light
+ * with many drives. The dot marks where your latest drive started.
  */
 export default function YourMap({ drives }) {
   const { c } = useTheme();
   const styles = useStyles(makeStyles);
-  const routes = useAllRoutes(drives);
+  const { parts, latestStart } = useAllRoutes(drives);
 
   const lines = useMemo(() => {
-    const fit = fitInCircle(routes, INNER);
-    if (!fit) return null;
-    return { polylines: routes.map(fit.points), home: fit.project(routes.at(-1)[0]) };
-  }, [routes]);
+    const fit = fitInCircle(
+      parts.map((p) => p.coordinates),
+      INNER
+    );
+    if (!fit || !latestStart) return null;
+    return {
+      polylines: parts.map((p) => ({
+        points: fit.points(p.coordinates),
+        dotted: p.crossing !== null,
+      })),
+      home: fit.project(latestStart),
+    };
+  }, [parts, latestStart]);
 
   return (
     <View style={styles.ring} accessible accessibilityLabel="Your map: every road you've driven">
       <Svg width={INNER} height={INNER}>
         <Circle cx={INNER / 2} cy={INNER / 2} r={INNER / 2} fill={c.mapLand} />
-        {lines?.polylines.map((points, i) => (
+        {lines?.polylines.map((l, i) => (
           <Polyline
             key={i}
-            points={points}
+            points={l.points}
             fill="none"
             stroke={c.accent}
             strokeWidth={3.5}
             strokeOpacity={0.9}
             strokeLinecap="round"
             strokeLinejoin="round"
+            strokeDasharray={l.dotted ? '0.1 7' : undefined}
           />
         ))}
         {lines ? (

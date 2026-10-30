@@ -15,6 +15,7 @@ import { getDrive, getDrivePoints } from '../storage/driveStorage';
 import { getDriveCompletions, getRoadTotals } from '../storage/roadStorage';
 import { getTrip } from '../storage/tripStorage';
 import { dayColorFor, spacing, type } from '../theme';
+import { driveGaps, routeSegments } from '../utils/crossings';
 import { distanceParts, formatDate, formatDurationShort } from '../utils/format';
 import { comingSoon } from '../utils/comingSoon';
 import { downsample } from '../utils/geoMath';
@@ -118,7 +119,13 @@ export default function SavedScreen() {
 
   const route = useMemo(
     () =>
-      points ? downsample(points).map(({ latitude, longitude }) => ({ latitude, longitude })) : [],
+      points
+        ? downsample(points).map(({ latitude, longitude, timestamp }) => ({
+            latitude,
+            longitude,
+            timestamp,
+          }))
+        : [],
     [points]
   );
 
@@ -147,13 +154,12 @@ export default function SavedScreen() {
       <View style={[styles.map, { height: 300 + insets.top }]}>
         <RouteMap
           flat
-          segments={[
-            {
-              key: 'route',
-              coordinates: route,
-              color: multiDay ? dayColorFor(c, dayNumber) : c.accent,
-            },
-          ]}
+          segments={routeSegments(
+            'route',
+            route,
+            driveGaps(drive),
+            multiDay ? dayColorFor(c, dayNumber) : c.accent
+          )}
           markers={routeMarkers({
             firstPoint: route[0],
             lastPoint: route.at(-1),

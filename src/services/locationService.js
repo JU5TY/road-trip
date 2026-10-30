@@ -14,8 +14,16 @@ import {
   getDrive,
 } from '../storage/driveStorage';
 import { checkDriveCountries } from '../storage/countryStorage';
+import { checkDriveCrossings } from '../storage/crossingStorage';
 import { checkDrive } from '../storage/roadStorage';
-import { applyFixes, finalizeStats, isUsableFix, toFix } from '../utils/geoMath';
+import {
+  applyFixes,
+  finalizeStats,
+  isUsableFix,
+  pauseStats,
+  resumeStats,
+  toFix,
+} from '../utils/geoMath';
 import { ensureDrivePlaces } from './placeService';
 
 export const LOCATION_TRACKING_TASK = 'LOCATION_TRACKING_TASK';
@@ -56,13 +64,24 @@ function enqueue(job) {
   return run;
 }
 
+/** Whether a fix was taken while the drive was paused (a late batch, or a stale first fix). */
+const duringPause = (stats, f) =>
+  (stats.pauses ?? []).some(
+    (p) => f.timestamp >= p.pausedAt && (p.resumedAt === null || f.timestamp < p.resumedAt)
+  );
+
 function handleLocations(locations) {
   return enqueue(async () => {
     const drive = await getActiveDrive();
     if (!drive) return;
     const fixes = locations
       .map(toFix)
-      .filter((f) => isUsableFix(f) && f.timestamp >= drive.startedAt - STALE_FIX_TOLERANCE_MS);
+      .filter(
+        (f) =>
+          isUsableFix(f) &&
+          f.timestamp >= drive.startedAt - STALE_FIX_TOLERANCE_MS &&
+          !duringPause(drive.stats, f)
+      );
     if (fixes.length === 0) return;
     const stats = applyFixes(drive.stats, fixes);
     await appendFixes(drive.id, fixes, stats);
@@ -159,7 +178,35 @@ export async function startDrive({ tripId = null } = {}) {
 }
 
 /**
- * Stop recording and close out the active drive, including its Iconic Roads and countries.
+ * Pause the active drive: location updates stop (and with them the notification)
+ * until resumeDrive, and nothing in between counts as driving.
+ */
+export async function pauseDrive() {
+  await stopUpdates();
+  return enqueue(async () => {
+    const drive = await getActiveDrive();
+    if (!drive) return null;
+    const stats = pauseStats(drive.stats, Date.now());
+    await appendFixes(drive.id, [], stats);
+    return { ...drive, stats };
+  });
+}
+
+/** Resume a paused drive. Call while the app is open (Android starts its service then). */
+export async function resumeDrive() {
+  const drive = await enqueue(async () => {
+    const active = await getActiveDrive();
+    if (!active) return null;
+    const stats = resumeStats(active.stats, Date.now());
+    await appendFixes(active.id, [], stats);
+    return { ...active, stats };
+  });
+  if (drive) await startUpdates();
+  return drive;
+}
+
+/**
+ * Stop recording and close out the active drive, including its crossings, Iconic Roads and countries.
  * Returns the completed drive id.
  */
 export async function stopDrive() {
@@ -170,6 +217,10 @@ export async function stopDrive() {
     if (!drive) return null;
     const endedAt = Date.now();
     await completeDrive(drive.id, endedAt, finalizeStats(drive.stats));
+    // Ferry and tunnel crossings first: they redo the stats the checks below build on.
+    await checkDriveCrossings(drive.id).catch((err) =>
+      console.warn('[locationService] crossings check failed', err)
+    );
     // Iconic Roads, before Drive saved opens so it can show them (all offline).
     await checkDrive(drive.id).catch((err) =>
       console.warn('[locationService] Iconic Roads check failed', err)
@@ -194,5 +245,7 @@ export async function resumeActiveDrive() {
   const drive = await getActiveDrive();
   // Never prompt on launch; if access was revoked the dashboard still shows the drive.
   if (!drive || !(await getLocationAccess()).granted) return null;
+  // Paused: Record shows it, but GPS stays off until Resume.
+  if (drive.stats.paused) return { background: await canTrackInBackground() };
   return startUpdates();
 }

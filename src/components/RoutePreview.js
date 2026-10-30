@@ -24,7 +24,7 @@ function regionFor(coordinates) {
  * Maps lite mode (a static image), which is cheaper when several previews are on
  * screen; iOS has no lite mode. Taps pass through to the parent. Pass `active={false}` to swap the map for a placeholder (e.g. when its
  * screen is in the background) so no native map is kept alive off-screen.
- * segments: [{ key, coordinates, color }]
+ * segments: [{ key, coordinates, color, dotted? }] (dotted: a ferry or tunnel)
  */
 export default function RoutePreview({ segments, height = 160, active = true }) {
   const { scheme } = useTheme();
@@ -48,7 +48,13 @@ export default function RoutePreview({ segments, height = 160, active = true }) 
         showsPointsOfInterests={false}
       >
         {segments.map((s) => (
-          <Polyline key={s.key} coordinates={s.coordinates} strokeColor={s.color} strokeWidth={4} />
+          <Polyline
+            key={s.key}
+            coordinates={s.coordinates}
+            strokeColor={s.color}
+            strokeWidth={4}
+            {...(s.dotted ? { lineDashPattern: [1, 8], lineCap: 'round' } : null)}
+          />
         ))}
       </MapView>
     </View>

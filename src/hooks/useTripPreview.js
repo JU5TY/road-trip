@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react';
 
 import { getDriveRoutePreview } from '../storage/driveStorage';
 import { dayColorFor } from '../theme';
+import { driveGaps, routeSegments } from '../utils/crossings';
 import { groupIntoDays } from '../utils/tripSummary';
 import { useTheme } from './useTheme';
 
@@ -9,12 +10,12 @@ const POINTS_PER_PREVIEW = 300;
 
 /**
  * Thinned route segments for a trip's map preview: one colour per day for
- * multi-day trips, the accent colour otherwise. Null while loading.
+ * multi-day trips, the accent colour otherwise, crossings and pauses dotted. Null while loading.
  */
 export function useTripPreview(trip) {
   const { c } = useTheme();
   const [result, setResult] = useState(null); // { key, segments }
-  const driveKey = trip ? trip.drives.map((d) => d.id).join(',') : '';
+  const driveKey = trip ? trip.drives.map((d) => `${d.id}:${driveGaps(d).length}`).join(',') : '';
 
   useEffect(() => {
     if (!trip) return;
@@ -24,14 +25,17 @@ export function useTripPreview(trip) {
     const perDrive = Math.max(40, Math.floor(POINTS_PER_PREVIEW / trip.drives.length));
     Promise.all(
       days.flatMap((day) =>
-        day.drives.map(async (d) => ({
-          key: `drive-${d.id}`,
-          color: multiDay ? dayColorFor(c, day.number) : c.accent,
-          coordinates: await getDriveRoutePreview(d.id, perDrive),
-        }))
+        day.drives.map(async (d) =>
+          routeSegments(
+            `drive-${d.id}`,
+            await getDriveRoutePreview(d.id, perDrive),
+            driveGaps(d),
+            multiDay ? dayColorFor(c, day.number) : c.accent
+          )
+        )
       )
     )
-      .then((segments) => !cancelled && setResult({ key: driveKey, segments }))
+      .then((byDrive) => !cancelled && setResult({ key: driveKey, segments: byDrive.flat() }))
       .catch((err) => console.warn('[preview] load failed', err));
     return () => {
       cancelled = true;

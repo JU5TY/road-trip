@@ -5,12 +5,12 @@ import { useSettings } from '../context/SettingsContext';
 import { useActiveDrive } from '../hooks/useActiveDrive';
 import { useStyles, useTheme } from '../hooks/useTheme';
 import { type } from '../theme';
-import { formatDistance, formatDuration } from '../utils/format';
+import { formatDistance, formatDurationShort } from '../utils/format';
 import { liveMetrics } from '../utils/geoMath';
 import Icon from './ui/Icon';
 
 /**
- * Green "● Recording · 1:12:40" row shown at the top of Home and Trips while a
+ * Blue "● Recording · 1h 12m" row shown at the top of Home and Trips while a
  * drive is live; tapping it goes back to the full-screen Record page.
  */
 export default function RecordingBar({ style }) {
@@ -31,7 +31,7 @@ export default function RecordingBar({ style }) {
       <View style={styles.dot} />
       <View style={styles.text}>
         <Text style={[type.bodyStrong, styles.title]}>
-          {live.isAutoPaused ? 'Paused' : 'Recording'} · {formatDuration(live.elapsedMs)}
+          {live.isPaused ? 'Paused' : 'Recording'} · {formatDurationShort(live.drivingMs)}
         </Text>
         <Text style={[type.small, styles.sub]}>{formatDistance(live.distanceM, units)} so far</Text>
       </View>

@@ -71,24 +71,49 @@ function EventRow({ item, color, onPress, hideTimes }) {
   );
 }
 
-/** Between events: a driving leg (solid bar), a break or an overnight (faint bar). */
+const GAP_ICONS = { leg: 'directions_car', break: 'schedule', overnight: 'bedtime' };
+// Ferries, tunnels and pauses (seaCrossing items): [icon, name].
+const SEA = {
+  ferry: ['directions_boat', 'Ferry'],
+  tunnel: ['train', 'Tunnel'],
+  pause: ['pause', 'Paused'],
+};
+
+/**
+ * Between events: a driving leg (solid bar), a ferry, tunnel or pause (dotted,
+ * not counted as driving), a break or an overnight (faint bar).
+ */
 function GapRow({ item, color, units, hideTimes, roads = [] }) {
   const { c } = useTheme();
   const styles = useStyles(makeStyles);
   const isLeg = item.type === 'leg';
-  const icon = isLeg ? 'directions_car' : item.type === 'break' ? 'schedule' : 'bedtime';
+  const isSea = item.type === 'seaCrossing';
+  const [seaIcon, seaName] = isSea ? SEA[item.kind] : [];
+  const icon = isSea ? seaIcon : GAP_ICONS[item.type];
   const duration = hideTimes ? '' : ` · ${formatDurationShort(item.durationMs)}`;
+  // A pause's distance is just the gap between two fixes, so it isn't shown.
+  const seaDistance = item.kind === 'pause' ? '' : ` · ${formatDistance(item.distanceM, units)}`;
   const text = isLeg
     ? `${formatDistance(item.distanceM, units)}${duration}`
-    : item.type === 'break'
-      ? `Break, not recording${duration}`
-      : `Overnight${item.place ? ` in ${item.place}` : ''}${duration}`;
+    : isSea
+      ? `${seaName}${seaDistance}${duration}`
+      : item.type === 'break'
+        ? `Break, not recording${duration}`
+        : `Overnight${item.place ? ` in ${item.place}` : ''}${duration}`;
 
   return (
     <View style={styles.gap}>
       {hideTimes ? null : <View style={styles.timeSpacer} />}
       <View style={styles.rail}>
-        <View style={[styles.bar, { backgroundColor: isLeg ? color : c.outline }]} />
+        {isSea ? (
+          <View style={styles.dots}>
+            {[0, 1, 2, 3].map((k) => (
+              <View key={k} style={[styles.railDot, { backgroundColor: color }]} />
+            ))}
+          </View>
+        ) : (
+          <View style={[styles.bar, { backgroundColor: isLeg ? color : c.outline }]} />
+        )}
       </View>
       <View style={styles.gapText}>
         <Icon name={icon} size={18} color={c.textMuted} />
@@ -159,7 +184,7 @@ export default function Timeline({
   const { c } = useTheme();
   const styles = useStyles(makeStyles);
   const [viewing, setViewing] = useState(null); // index into `photos`
-  const isGap = (item) => ['leg', 'break', 'overnight'].includes(item.type);
+  const isGap = (item) => ['leg', 'seaCrossing', 'break', 'overnight'].includes(item.type);
   const photosAt = (item) =>
     item.type === 'stop'
       ? photos.filter(
@@ -229,6 +254,8 @@ const makeStyles = (c) => ({
   dot: { width: 16, height: 16, borderRadius: 8 },
   ring: { width: 16, height: 16, borderRadius: 8, borderWidth: 3, backgroundColor: c.background },
   bar: { width: 4, flex: 1, borderRadius: 2 },
+  dots: { flex: 1, justifyContent: 'space-evenly' },
+  railDot: { width: 4, height: 4, borderRadius: 2 },
   flex: { flex: 1, minWidth: 0 },
   title: { color: c.text },
   muted: { color: c.textMuted, flexShrink: 1 },

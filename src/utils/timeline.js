@@ -1,5 +1,5 @@
 // Stop-by-stop timelines for drives and trips. Pure functions over drives
-// ({ startedAt, endedAt, stats, places }) and their GPS points ({ latitude,
+// ({ startedAt, endedAt, stats, places, seaCrossings }) and their GPS points ({ latitude,
 // longitude, timestamp }, oldest first).
 //
 // Item types:
@@ -7,9 +7,12 @@
 //   { type: 'leg', distanceM, durationMs }                      driving between events
 //   { type: 'stop', time, endTime, place, latitude, longitude } rest stop
 //   { type: 'crossing', time, country, from }                   crossed a border (names)
+//   { type: 'seaCrossing', kind, time, endTime, distanceM,      a ferry, tunnel or pause
+//     durationMs }                                              (kind 'pause'), between legs
 //   { type: 'break', durationMs }                               same-day gap between drives
 //   { type: 'overnight', durationMs, place }                    gap to the next driving day
 import { getCountry } from './countries';
+import { driveGaps } from './crossings';
 import { haversineDistance } from './geoMath';
 import { groupIntoDays } from './tripSummary';
 
@@ -48,15 +51,18 @@ function scaleTo(raw, total) {
 
 /**
  * Border crossings of a drive as timeline events, oldest first. A crossing
- * during a rest stop is left out (it would split the stop).
+ * during a rest stop is left out (it would split the stop); one during a ferry,
+ * tunnel or pause moves to where it ends.
  */
 function crossingEvents(drive) {
   const visits = drive.countries ?? [];
+  const landing = (t) =>
+    driveGaps(drive).find((c) => t > c.startedAt && t < c.endedAt)?.endedAt ?? t;
   return visits
     .slice(1)
     .map((v, k) => ({
       type: 'crossing',
-      time: v.enteredAt,
+      time: landing(v.enteredAt),
       country: getCountry(v.code)?.name,
       from: getCountry(visits[k].code)?.name,
     }))
@@ -69,7 +75,7 @@ function crossingEvents(drive) {
     );
 }
 
-/** Timeline of one drive: start, legs, rest stops and border crossings, finish. */
+/** Timeline of one drive: start, legs, rest stops, ferries, pauses and border crossings, finish. */
 export function buildDriveTimeline(drive, points, { dayNumber } = {}) {
   const stopName = (i) => drive.places.stops?.[i] || 'Rest stop';
   const events = [
@@ -80,6 +86,14 @@ export function buildDriveTimeline(drive, points, { dayNumber } = {}) {
       place: stopName(i),
       latitude: stop.latitude,
       longitude: stop.longitude,
+    })),
+    ...driveGaps(drive).map((c) => ({
+      type: 'seaCrossing',
+      kind: c.kind,
+      time: c.startedAt,
+      endTime: c.endedAt,
+      distanceM: c.distanceM,
+      durationMs: c.endedAt - c.startedAt,
     })),
     ...crossingEvents(drive),
   ].sort((a, b) => a.time - b.time);
@@ -107,8 +121,12 @@ export function buildDriveTimeline(drive, points, { dayNumber } = {}) {
   );
 
   const items = [{ type: 'start', time: drive.startedAt, place: drive.places.start, dayNumber }];
-  legs.forEach((_, i) => {
-    items.push({ type: 'leg', distanceM: distances[i], durationMs: durations[i] });
+  legs.forEach(([from, to], i) => {
+    // No empty leg beside a ferry or tunnel (e.g. a border right where it lands).
+    const bySea = events[i - 1]?.type === 'seaCrossing' || events[i]?.type === 'seaCrossing';
+    if (!(bySea && to <= from)) {
+      items.push({ type: 'leg', distanceM: distances[i], durationMs: durations[i] });
+    }
     if (events[i]) items.push(events[i]);
   });
   items.push({ type: 'finish', time: drive.endedAt, place: drive.places.end, dayNumber });

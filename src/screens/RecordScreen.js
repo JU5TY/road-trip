@@ -7,6 +7,7 @@ import MapView, { Polyline } from 'react-native-maps';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import PermissionSheet from '../components/PermissionSheet';
+import ConfirmDialog from '../components/ui/ConfirmDialog';
 import Icon from '../components/ui/Icon';
 import IconButton from '../components/ui/IconButton';
 import { useSettings } from '../context/SettingsContext';
@@ -14,14 +15,17 @@ import { useStyles, useTheme } from '../hooks/useTheme';
 import {
   canTrackInBackground,
   getLocationAccess,
+  pauseDrive,
   requestLocationAccess,
+  resumeDrive,
   startDrive,
   stopDrive,
 } from '../services/locationService';
 import { getActiveDrive, getDriveRoutePreview } from '../storage/driveStorage';
 import { getContinuableTrip, getTrip } from '../storage/tripStorage';
 import { dayColorFor, spacing, type } from '../theme';
-import { distanceParts, formatDistance, formatDurationShort } from '../utils/format';
+import { driveGaps, routeSegments } from '../utils/crossings';
+import { distanceParts, formatDistance, formatDurationShort, formatSpeed } from '../utils/format';
 import { liveMetrics } from '../utils/geoMath';
 import { CONTINUE_WINDOW_MS, dayNumberFor, summarizeDrives, tripTitle } from '../utils/tripSummary';
 
@@ -30,13 +34,14 @@ const REFRESH_MS = 1000;
 const ROUTE_REFRESH_MS = 10 * 1000;
 const ROUTE_POINTS = 400;
 const POSITION_DELTA = 0.02; // ~2 km across when centring on the car
+const BREAK_SOON_MS = 30 * 60 * 1000; // the break bar shows this long before a break is due
 
 /**
- * Map for Record: the live route so far and the phone's position. Centres on
- * the latest fix (or the route) when asked through `centreKey`. With `follow`,
- * it also tracks each new fix until the map is moved by hand.
+ * Map for Record: the live route so far (`segments`, pauses dotted) and the
+ * phone's position. Centres on the latest fix (or the route) when asked through
+ * `centreKey`. With `follow`, it also tracks each new fix until the map is moved by hand.
  */
-function LiveMap({ route, position, centreKey, follow = false }) {
+function LiveMap({ segments = [], position, centreKey, follow = false }) {
   const { scheme, c } = useTheme();
   const mapRef = useRef(null);
   const followingRef = useRef(true);
@@ -79,9 +84,15 @@ function LiveMap({ route, position, centreKey, follow = false }) {
           : undefined
       }
     >
-      {route.length > 1 ? (
-        <Polyline coordinates={route} strokeColor={c.accent} strokeWidth={5} />
-      ) : null}
+      {segments.map((s) => (
+        <Polyline
+          key={s.key}
+          coordinates={s.coordinates}
+          strokeColor={c.accent}
+          strokeWidth={5}
+          {...(s.dotted ? { lineDashPattern: [1, 10], lineCap: 'round' } : null)}
+        />
+      ))}
     </MapView>
   );
 }
@@ -147,6 +158,7 @@ export default function RecordScreen() {
   const [recent, setRecent] = useState(null); // trip that can be continued, if any
   const [choice, setChoice] = useState('continue'); // 'continue' | 'new'
   const [mapHidden, setMapHidden] = useState(false);
+  const [confirmingStop, setConfirmingStop] = useState(false);
   const [centreKey, setCentreKey] = useState(0);
   const [here, setHere] = useState(null); // last known position, for the Ready map
 
@@ -265,6 +277,18 @@ export default function RecordScreen() {
       if (driveId) router.push(`/saved/${driveId}`);
     });
 
+  // Pause stops GPS; the gap is drawn dotted and isn't counted as driving.
+  const pause = () =>
+    run(async () => {
+      const paused = await pauseDrive();
+      if (paused) setDrive(paused);
+    });
+  const resume = () =>
+    run(async () => {
+      const resumed = await resumeDrive();
+      if (resumed) setDrive(resumed);
+    });
+
   const onSheetPrimary = async () => {
     const kind = sheet;
     setSheet(null);
@@ -311,7 +335,7 @@ export default function RecordScreen() {
       <View style={[styles.screen, styles.readyScreen]}>
         {permissionSheet}
         <View style={[styles.map, styles.mapShrink, { flexBasis: 380 + insets.top }]}>
-          <LiveMap route={[]} position={here} centreKey={centreKey} />
+          <LiveMap position={here} centreKey={centreKey} />
           <IconButton
             icon="close"
             variant="floating"
@@ -397,28 +421,52 @@ export default function RecordScreen() {
   // ---- Recording: full screen, no nav bar.
   const tripLabel = tripLabelFor && tripLabelFor.driveId === activeId ? tripLabelFor.text : null;
   const route = routeFor && routeFor.driveId === activeId ? routeFor.points : [];
-  const status = !live.hasFix
-    ? 'Waiting for GPS'
-    : live.waitingToSetOff
-      ? 'Waiting to set off'
-      : live.isAutoPaused
-        ? 'Paused'
-        : 'Recording';
+  const paused = live.isPaused;
+  const status = paused
+    ? 'Paused'
+    : !live.hasFix
+      ? 'Waiting for GPS'
+      : live.waitingToSetOff
+        ? 'Waiting to set off'
+        : live.isAutoPaused
+          ? 'Stopped'
+          : 'Recording';
   const distance = distanceParts(live.distanceM, units);
-  // The break card only appears as a break comes due; until then it would match Driving time.
+  const avgSpeedMps = live.drivingMs > 0 ? live.distanceM / (live.drivingMs / 1000) : 0;
+  // Break bar: hidden until the last BREAK_SOON_MS before a break is due, then
+  // counts down in blue; once due it fills orange and counts up.
   const breakDueMs = breakReminderMinutes * 60000;
-  const breakDue = breakReminderMinutes > 0 && live.stintMs >= breakDueMs;
+  const breakSoon = breakReminderMinutes > 0 && live.stintMs >= breakDueMs - BREAK_SOON_MS;
+  const breakDue = breakSoon && live.stintMs >= breakDueMs;
   const minimise = () => router.navigate('/');
   const unitWord = units === 'imperial' ? 'miles' : 'km';
 
   return (
     <View style={styles.screen}>
       {permissionSheet}
+      <ConfirmDialog
+        visible={confirmingStop}
+        title="Stop and save this drive?"
+        message={`${formatDistance(live.distanceM, units)} · ${formatDurationShort(live.drivingMs)} driving. You can still add to this trip tomorrow.`}
+        cancelLabel="Keep recording"
+        confirmLabel="Stop and save"
+        destructive
+        onCancel={() => setConfirmingStop(false)}
+        onConfirm={() => {
+          setConfirmingStop(false);
+          stop();
+        }}
+      />
       {/* Mid-drive the phone is usually in a mount: don't let the screen sleep. */}
       {focused ? <KeepScreenOn /> : null}
       {!mapHidden ? (
         <View style={[styles.map, styles.mapShrink, { flexBasis: 320 + insets.top }]}>
-          <LiveMap route={route} position={position} centreKey={centreKey} follow />
+          <LiveMap
+            segments={routeSegments('live', route, driveGaps(drive), c.accent)}
+            position={position}
+            centreKey={centreKey}
+            follow
+          />
           <IconButton
             icon="expand_more"
             iconSize={26}
@@ -434,6 +482,13 @@ export default function RecordScreen() {
             onPress={() => setCentreKey((k) => k + 1)}
             style={[styles.mapButtonRight, { top: insets.top + 12 }]}
           />
+          <IconButton
+            icon="visibility_off"
+            variant="floating"
+            accessibilityLabel="Hide map"
+            onPress={() => setMapHidden(true)}
+            style={[styles.mapButtonRight, styles.mapButtonBottom]}
+          />
         </View>
       ) : null}
 
@@ -447,24 +502,40 @@ export default function RecordScreen() {
         ]}
       >
         <View style={styles.statusRow}>
-          <View style={[styles.statusPill, status !== 'Recording' && styles.statusPillIdle]}>
-            <View style={[styles.statusDot, status !== 'Recording' && styles.statusDotIdle]} />
-            <Text style={[type.button, styles.statusText, status !== 'Recording' && styles.text]}>
-              {status}
-            </Text>
-          </View>
+          {paused ? (
+            <View style={[styles.statusPill, styles.statusPillPaused]}>
+              <Icon name="pause" filled size={18} color={c.onWarningContainer} />
+              <Text style={[type.button, styles.onWarning]}>Paused</Text>
+            </View>
+          ) : (
+            <View style={[styles.statusPill, status !== 'Recording' && styles.statusPillIdle]}>
+              <View style={[styles.statusDot, status !== 'Recording' && styles.statusDotIdle]} />
+              <Text style={[type.button, styles.statusText, status !== 'Recording' && styles.text]}>
+                {status}
+              </Text>
+            </View>
+          )}
           <Text style={[type.body, styles.muted, styles.statusTrip]} numberOfLines={1}>
             {tripLabel ?? ''}
           </Text>
           {mapHidden ? (
-            <IconButton
-              icon="expand_more"
-              variant="record"
-              iconSize={26}
-              accessibilityLabel="Minimise, keep recording"
-              onPress={minimise}
-              style={styles.minimiseHidden}
-            />
+            <>
+              <IconButton
+                icon="map"
+                variant="record"
+                accessibilityLabel="Show map"
+                onPress={() => setMapHidden(false)}
+                style={styles.rowButton}
+              />
+              <IconButton
+                icon="expand_more"
+                variant="record"
+                iconSize={26}
+                accessibilityLabel="Minimise, keep recording"
+                onPress={minimise}
+                style={[styles.rowButton, styles.rowButtonLast]}
+              />
+            </>
           ) : null}
         </View>
 
@@ -496,36 +567,50 @@ export default function RecordScreen() {
             accessible
             accessibilityLabel={`Driving ${formatDurationShort(live.drivingMs)}`}
           >
-            <Text style={[type.stat, styles.liveValue]}>{formatDurationShort(live.drivingMs)}</Text>
+            <Text style={[type.stat, styles.liveValue]} numberOfLines={1} adjustsFontSizeToFit>
+              {formatDurationShort(live.drivingMs)}
+            </Text>
             <Text style={[type.bodyLarge, styles.muted]}>driving</Text>
           </View>
           <View style={styles.liveDivider} />
           <View
             style={styles.liveStat}
             accessible
-            accessibilityLabel={`Since break ${formatDurationShort(live.stintMs)}`}
+            accessibilityLabel={`Average speed ${formatSpeed(avgSpeedMps, units)}`}
           >
-            <Text style={[type.stat, styles.liveValue]}>{formatDurationShort(live.stintMs)}</Text>
-            <Text style={[type.bodyLarge, styles.muted]}>since break</Text>
+            <Text style={[type.stat, styles.liveValue]} numberOfLines={1} adjustsFontSizeToFit>
+              {formatSpeed(avgSpeedMps, units)}
+            </Text>
+            <Text style={[type.bodyLarge, styles.muted]}>avg speed</Text>
           </View>
         </View>
 
-        {breakReminderMinutes > 0 ? (
-          <View style={[styles.breakBox, breakDue && styles.breakBoxDue]}>
+        {breakSoon ? (
+          <View style={styles.breakBox}>
             <View style={styles.breakTitle}>
-              <Icon name="local_cafe" size={20} color={breakDue ? c.onWarningContainer : c.text} />
-              <Text style={[type.bodyStrong, breakDue ? styles.onWarning : styles.text]}>
+              <Icon
+                name="local_cafe"
+                filled={breakDue}
+                size={20}
+                color={breakDue ? c.breakDue : c.text}
+              />
+              <Text style={[type.bodyStrong, styles.text, styles.flex]}>
                 {breakDue
                   ? 'Time for a break'
                   : `Break in ${formatDurationShort(breakDueMs - live.stintMs)}`}
               </Text>
+              {breakDue ? (
+                <Text style={[type.body, styles.muted]}>
+                  {formatDurationShort(live.stintMs)} since break
+                </Text>
+              ) : null}
             </View>
-            <View style={[styles.breakTrack, breakDue && styles.breakTrackDue]}>
+            <View style={styles.breakTrack}>
               <View
                 style={[
                   styles.breakFill,
                   breakDue && styles.breakFillDue,
-                  { width: `${Math.min(100, Math.max(2, (live.stintMs / breakDueMs) * 100))}%` },
+                  { width: `${Math.min(100, (live.stintMs / breakDueMs) * 100)}%` },
                 ]}
               />
             </View>
@@ -545,29 +630,42 @@ export default function RecordScreen() {
             style={styles.sideControl}
           />
           {busy ? (
-            <ActivityIndicator color={c.stop} style={styles.stopBusy} />
-          ) : (
+            <ActivityIndicator color={c.accent} style={styles.centreBusy} />
+          ) : paused ? (
             <IconButton
-              icon="stop"
+              icon="play_arrow"
               filled
-              variant="stop"
+              variant="filled"
               size={96}
-              iconSize={48}
-              label="Stop"
+              iconSize={52}
+              label="Resume"
               labelStyle={styles.controlLabel}
               style={styles.flex}
-              accessibilityLabel="Stop recording"
-              onPress={stop}
+              onPress={resume}
+            />
+          ) : (
+            <IconButton
+              icon="pause"
+              filled
+              variant="pause"
+              size={96}
+              iconSize={48}
+              label="Pause"
+              labelStyle={styles.controlLabel}
+              style={styles.flex}
+              onPress={pause}
             />
           )}
           <IconButton
-            icon={mapHidden ? 'map' : 'visibility_off'}
-            variant="record"
+            icon="stop"
+            filled
+            variant="stop"
             size={64}
-            iconSize={28}
+            iconSize={32}
+            label="Stop"
             labelStyle={styles.controlLabel}
-            label={mapHidden ? 'Show map' : 'Hide map'}
-            onPress={() => setMapHidden((h) => !h)}
+            accessibilityLabel="Stop recording"
+            onPress={() => setConfirmingStop(true)}
             style={styles.sideControl}
           />
         </View>
@@ -583,6 +681,7 @@ const makeStyles = (c) => ({
   mapShrink: { flexGrow: 0, flexShrink: 1, minHeight: 180 },
   mapButtonLeft: { position: 'absolute', left: 12 },
   mapButtonRight: { position: 'absolute', right: 12 },
+  mapButtonBottom: { bottom: 12 },
   flex: { flex: 1, minWidth: 0 },
   text: { color: c.text },
   muted: { color: c.textMuted },
@@ -656,6 +755,7 @@ const makeStyles = (c) => ({
     backgroundColor: c.recordingPill,
   },
   statusPillIdle: { backgroundColor: c.track },
+  statusPillPaused: { gap: 6, paddingLeft: 10, backgroundColor: c.warningContainer },
   statusText: { color: c.onRecordingPill },
   statusDot: { width: 10, height: 10, borderRadius: 5, backgroundColor: c.stop },
   statusDotIdle: { backgroundColor: c.textMuted },
@@ -678,17 +778,16 @@ const makeStyles = (c) => ({
   liveValue: { color: c.textStrong, fontSize: 40, lineHeight: 48 },
   liveDivider: { width: 1, height: 56, backgroundColor: c.outline },
   breakBox: { gap: 10, marginTop: 20, paddingVertical: 12, paddingHorizontal: 14 },
-  breakBoxDue: { borderRadius: 12, backgroundColor: c.warningContainer },
   breakTitle: { flexDirection: 'row', alignItems: 'center', gap: 8 },
   onWarning: { color: c.onWarningContainer },
   breakTrack: { height: 8, borderRadius: 4, backgroundColor: c.recordControl, overflow: 'hidden' },
-  breakTrackDue: { backgroundColor: 'rgba(0,0,0,0.12)' },
   breakFill: { height: 8, borderRadius: 4, backgroundColor: c.accent },
-  breakFillDue: { backgroundColor: c.dayColors[0] },
+  breakFillDue: { backgroundColor: c.breakDue },
   controls: { flexDirection: 'row', alignItems: 'flex-start' },
   sideControl: { flex: 1, paddingTop: 16 },
   controlLabel: { fontSize: 15, lineHeight: 20 },
   startLabel: { fontSize: 14, lineHeight: 20 },
-  minimiseHidden: { margin: -8, marginLeft: 0 },
-  stopBusy: { flex: 1, height: 124 },
+  rowButton: { marginVertical: -8 },
+  rowButtonLast: { marginRight: -8 },
+  centreBusy: { flex: 1, height: 124 },
 });

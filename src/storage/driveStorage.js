@@ -14,6 +14,8 @@ export function rowToDrive(row) {
     // [{ code, enteredAt, latitude, longitude, distanceM }]; null until checked.
     countries: row.countries ? JSON.parse(row.countries) : null,
     vehicleId: row.vehicle_id ?? null,
+    // Ferry and tunnel crossings (utils/crossings.js); none until checked.
+    seaCrossings: row.sea_crossings ? JSON.parse(row.sea_crossings) : [],
   };
 }
 
@@ -59,6 +61,7 @@ export async function createDrive({ tripId = null, startedAt = Date.now() } = {}
     places: {},
     countries: null,
     vehicleId,
+    seaCrossings: [],
   };
 }
 
@@ -116,13 +119,14 @@ export async function getDrivePoints(driveId) {
 
 /**
  * Roughly `maxPoints` evenly spaced points of a drive (always including the
- * last), thinned in SQL so long drives stay cheap to preview.
+ * last), thinned in SQL so long drives stay cheap to preview. Timestamps let
+ * the preview be split at crossings.
  */
 export async function getDriveRoutePreview(driveId, maxPoints = 150) {
   const db = await getDb();
   return db.getAllAsync(
-    `SELECT latitude, longitude FROM (
-       SELECT latitude, longitude,
+    `SELECT latitude, longitude, timestamp FROM (
+       SELECT latitude, longitude, timestamp,
               ROW_NUMBER() OVER (ORDER BY timestamp) AS rn,
               COUNT(*) OVER () AS total
        FROM points WHERE drive_id = ?

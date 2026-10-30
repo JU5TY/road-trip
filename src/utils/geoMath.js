@@ -9,6 +9,8 @@ const EARTH_RADIUS_M = 6371008.8;
 // traffic jams, which keep creeping forward out of the radius.
 export const STOP_RADIUS_M = 100;
 export const STOP_MIN_DURATION_MS = 5 * 60 * 1000;
+/** A stop or pause this long counts as a break: it resets the break reminder. */
+export const BREAK_MIN_MS = 15 * 60 * 1000;
 const STOP_SPEED_MPS = 5 / 3.6; // "stationary" for long GPS gaps and the live break timer
 
 // Top speed must be held at least this long to count.
@@ -70,6 +72,12 @@ export function createTripStats() {
     dwell: null, // { latitude, longitude, startedAt, durationMs, lastInside }
     speedWindow: [], // recent { t, v } samples for sustained top speed
     altitudeRef: null, // reference altitude for hysteresis-based gain
+    // Pauses from the Pause button, drawn dotted like a ferry (see utils/crossings.js):
+    // { kind: 'pause', pausedAt, resumedAt, startedAt, endedAt, from, to, distanceM },
+    // startedAt / from the last fix before it, endedAt / to the first fix after.
+    // The latest is open (endedAt null) from Pause until the first fix after Resume.
+    pauses: [],
+    paused: false,
   };
 }
 
@@ -125,7 +133,8 @@ function closeDwell(stats, endedAt) {
         longitude: dwell.longitude,
       },
     ],
-    currentStintMs: 0,
+    // Only a long enough stop counts as a break.
+    currentStintMs: dwell.durationMs >= BREAK_MIN_MS ? 0 : stats.currentStintMs,
   };
 }
 
@@ -176,9 +185,63 @@ function updateTopSpeed(stats, t, v, dtMs) {
   return { ...stats, speedWindow: window, topSpeedMps };
 }
 
+const coordsOf = (p) => ({ latitude: p.latitude, longitude: p.longitude });
+
+/** The pause still open (paused, or resumed and waiting for a fix), if any. */
+const openPause = (stats) => {
+  const last = stats.pauses?.at(-1);
+  return last && last.endedAt === null ? last : null;
+};
+
+/** Pause at `now`: no fix counts until Resume, and the gap is left out of driving. */
+export function pauseStats(stats, now) {
+  if (stats.paused) return stats;
+  const last = stats.lastFix;
+  const pause = {
+    kind: 'pause',
+    pausedAt: now,
+    resumedAt: null,
+    startedAt: last?.timestamp ?? now,
+    endedAt: null,
+    from: last ? coordsOf(last) : null,
+    to: null,
+    distanceM: 0,
+  };
+  return { ...stats, paused: true, pauses: [...(stats.pauses ?? []), pause] };
+}
+
+/** Resume at `now`. The pause closes at the next fix (see applyFix). */
+export function resumeStats(stats, now) {
+  if (!stats.paused) return stats;
+  const pauses = [...stats.pauses];
+  pauses[pauses.length - 1] = { ...pauses.at(-1), resumedAt: now };
+  return { ...stats, paused: false, pauses };
+}
+
+/** The first fix after Resume: close the pause there and carry on, as after a ferry. */
+function closePause(stats, fix, pause) {
+  const earlier = stats.pauses.slice(0, -1);
+  // Paused before the first fix: there's no gap to draw.
+  if (!pause.from) return applyFix({ ...stats, pauses: earlier }, fix);
+  const next = skipTo(stats, fix, {
+    resetStint: (pause.resumedAt ?? fix.timestamp) - pause.pausedAt >= BREAK_MIN_MS,
+  });
+  if (next === stats) return stats;
+  const closed = {
+    ...pause,
+    endedAt: fix.timestamp,
+    to: coordsOf(fix),
+    distanceM: Math.round(haversineDistance(pause.from, fix)),
+  };
+  return { ...next, pauses: [...earlier, closed] };
+}
+
 /** Fold one GPS fix into the running stats. Returns a new stats object. */
 export function applyFix(stats, fix) {
   if (!isUsableFix(fix)) return stats;
+  if (stats.paused) return stats; // nothing counts while paused
+  const pause = openPause(stats);
+  if (pause) return closePause(stats, fix, pause);
   const prev = stats.lastFix;
   if (prev && fix.timestamp <= prev.timestamp) return stats; // duplicate / out of order
 
@@ -230,6 +293,24 @@ export function applyFix(stats, fix) {
   return { ...next, lastFix: fix };
 }
 
+/**
+ * Carry on from `fix` after a ferry, tunnel or pause: the gap counts as neither
+ * driving nor a rest stop, and top speed starts afresh. The driving stint starts
+ * afresh too, unless `resetStint` is false (a pause too short to be a break).
+ */
+export function skipTo(stats, fix, { resetStint = true } = {}) {
+  if (!stats.lastFix) return applyFix(stats, fix);
+  if (!isUsableFix(fix) || fix.timestamp <= stats.lastFix.timestamp) return stats;
+  const next = closeDwell(stats, stats.lastFix.timestamp);
+  return {
+    ...updateElevation(next, fix),
+    lastFix: fix,
+    dwell: openDwell(fix),
+    speedWindow: [],
+    currentStintMs: resetStint ? 0 : next.currentStintMs,
+  };
+}
+
 /** Fold a batch of fixes, oldest first. */
 export function applyFixes(stats, fixes) {
   // Fill in fields added after a trip was started with an older version.
@@ -240,10 +321,12 @@ export function applyFixes(stats, fixes) {
 /**
  * Close out a trip. A short dwell still open at the end counts as driving; a
  * long one (parked before pressing STOP) is excluded but is not a rest stop.
+ * A pause still open (stopped while paused) has nothing after it, so it goes.
  */
 export function finalizeStats(stats) {
   const { dwell } = stats;
-  const next = { ...stats, dwell: null, speedWindow: [] };
+  const pauses = (stats.pauses ?? []).filter((p) => p.endedAt !== null);
+  const next = { ...stats, dwell: null, speedWindow: [], paused: false, pauses };
   if (dwell && dwell.durationMs < STOP_MIN_DURATION_MS) {
     return addDriving(next, dwell.durationMs, dwellDistance(dwell));
   }
@@ -272,9 +355,13 @@ export function drivingSinceBreakMs(stats) {
 export function liveMetrics(trip, now = Date.now()) {
   const { stats, startedAt } = trip;
   const last = stats.lastFix;
-  const fresh = last && now - last.timestamp < STALE_FIX_MS;
+  // Paused (or resumed, waiting for a fix): everything holds as it was at Pause.
+  const pause = openPause(stats);
+  const at = pause ? Math.min(now, pause.pausedAt) : now;
+  const pausedForMs = pause ? (pause.resumedAt ?? now) - pause.pausedAt : 0;
+  const fresh = last && at - last.timestamp < STALE_FIX_MS;
   // Phones send no fixes while stationary, so time since the last fix counts as dwelling.
-  const sinceLastFix = last ? Math.max(0, now - last.timestamp) : 0;
+  const sinceLastFix = last ? Math.max(0, at - last.timestamp) : 0;
   const dwellMs = (stats.dwell?.durationMs ?? 0) + sinceLastFix;
   const longDwell = Boolean(last) && dwellMs >= STOP_MIN_DURATION_MS;
   // The break timer ticks between fixes while rolling, and holds while stationary
@@ -286,6 +373,8 @@ export function liveMetrics(trip, now = Date.now()) {
   const waitingToSetOff = Boolean(last) && !hasMoved && !rollingNow;
   // Idle before setting off is not a rest stop.
   const isAutoPaused = longDwell && hasMoved;
+  // A long enough stop or pause is a break: the break timer starts again.
+  const onBreak = (isAutoPaused && dwellMs >= BREAK_MIN_MS) || pausedForMs >= BREAK_MIN_MS;
   // Capped rather than dropped when fixes stop (tunnels), so it never steps backwards.
   // Nothing counts until the car has left its starting spot: before then each new
   // fix would reset it, so the timers flicked 0:00, 0:01, 0:00, 0:01 when setting off.
@@ -300,14 +389,14 @@ export function liveMetrics(trip, now = Date.now()) {
     distanceM: stats.distanceM + (pending ? dwellDistance(pending) : 0),
     elapsedMs: now - startedAt,
     currentAltitudeM: stats.currentAltitudeM,
-    stintMs:
-      isAutoPaused || !hasMoved ? 0 : drivingSinceBreakMs(stats) + rollingMs,
+    stintMs: onBreak || !hasMoved ? 0 : drivingSinceBreakMs(stats) + (isAutoPaused ? 0 : rollingMs),
     // Driving time so far, counting a short stop in progress (as the break timer does).
     drivingMs:
       stats.movingTimeMs +
       (pending && hasMoved ? pending.durationMs : 0) +
       (isAutoPaused ? 0 : rollingMs),
     isAutoPaused,
+    isPaused: Boolean(stats.paused),
     waitingToSetOff,
     hasFix: Boolean(last),
   };

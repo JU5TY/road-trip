@@ -1,17 +1,17 @@
 import Constants from 'expo-constants';
 import { router } from 'expo-router';
 import { useState } from 'react';
-import { Alert, ScrollView, Text, View } from 'react-native';
+import { Alert, Pressable, ScrollView, Text, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import ActionSheet from '../components/ActionSheet';
 import VehicleSheet from '../components/VehicleSheet';
-import PremiumCard from '../components/PremiumCard';
 import Icon from '../components/ui/Icon';
 import ListRow from '../components/ui/ListRow';
 import Switch from '../components/ui/Switch';
 import SectionHeader from '../components/ui/SectionHeader';
 import { useSettings } from '../context/SettingsContext';
+import { PREMIUM_TAGLINE, openPremium, usePremium } from '../hooks/usePremium';
 import { useRoadTotals } from '../hooks/useRoadTotals';
 import { useStyles, useTheme } from '../hooks/useTheme';
 import { useVehicles } from '../hooks/useVehicles';
@@ -30,10 +30,36 @@ const THEMES = [
   ['dark', 'Dark'],
 ];
 
-/** The small blue "Premium" tag on rows that will need Premium. */
+/** The blue Premium row near the top of You; opens the Premium screen. */
+function PremiumRow() {
+  const { c } = useTheme();
+  const styles = useStyles(makeStyles);
+  return (
+    <Pressable
+      onPress={openPremium}
+      accessibilityRole="button"
+      accessibilityLabel={`Premium. ${PREMIUM_TAGLINE}`}
+      style={({ pressed }) => [styles.premium, pressed && styles.pressed]}
+    >
+      <View style={styles.premiumWell}>
+        <Icon name="workspace_premium" filled size={26} color={c.onAccentContainer} />
+      </View>
+      <View style={styles.flex}>
+        <Text style={[type.bodyStrong, styles.premiumTitle]}>Premium</Text>
+        <Text style={[type.small, styles.premiumText]}>{PREMIUM_TAGLINE}</Text>
+      </View>
+      <View style={styles.view}>
+        <Text style={[type.label, styles.viewText]}>View</Text>
+      </View>
+    </Pressable>
+  );
+}
+
+/** The small blue "Premium" tag on rows that need Premium (hidden once it's active). */
 function PremiumTag() {
   const { c } = useTheme();
   const styles = useStyles(makeStyles);
+  if (usePremium()) return null;
   return (
     <View style={styles.tag}>
       <Icon name="workspace_premium" size={14} color={c.onAccentContainer} />
@@ -71,6 +97,9 @@ export default function SettingsScreen() {
   const version = Constants.expoConfig?.version ?? '—';
   const [vehicles, reloadVehicles] = useVehicles();
   const [editing, setEditing] = useState(null); // null | 'new' | vehicle
+  const premium = usePremium();
+  // Free: one vehicle in the Garage; Premium: as many as you like.
+  const canAddVehicle = premium || !vehicles?.length;
 
   const saveVehicle = async (name) => {
     try {
@@ -100,7 +129,7 @@ export default function SettingsScreen() {
       <ActionSheet
         visible={picking}
         title="Break reminder"
-        message="On Record, a Since break card appears 15 minutes before this much driving without a stop, then turns amber."
+        message="On Record, a break bar appears 30 minutes before this much driving without a break, then turns orange. A stop or pause of 15 minutes or more counts as a break."
         actions={BREAK_REMINDER_OPTIONS.map((minutes) => ({
           key: String(minutes),
           label: formatBreakReminder(minutes),
@@ -123,7 +152,7 @@ export default function SettingsScreen() {
       <Text style={[type.headline, styles.h1]} role="heading">
         You
       </Text>
-      <PremiumCard />
+      <PremiumRow />
 
       <SectionHeader variant="label" title="Garage" />
       {(vehicles ?? []).map((v) => (
@@ -151,9 +180,7 @@ export default function SettingsScreen() {
           title={vehicles.length ? 'Add another vehicle' : 'Add your vehicle'}
           titleStyle={styles.addTitle}
           right={vehicles.length ? <PremiumTag /> : null}
-          onPress={
-            vehicles.length ? () => comingSoon('More than one vehicle') : () => setEditing('new')
-          }
+          onPress={canAddVehicle ? () => setEditing('new') : openPremium}
         />
       ) : null}
 
@@ -216,14 +243,14 @@ export default function SettingsScreen() {
         icon="cloud_upload"
         title="Back up and restore"
         right={<PremiumTag />}
-        onPress={() => comingSoon('Back up and restore')}
+        onPress={premium ? () => comingSoon('Back up and restore') : openPremium}
         divider
       />
       <ListRow
         icon="download"
         title="Export trips (GPX)"
         right={<PremiumTag />}
-        onPress={() => comingSoon('GPX export')}
+        onPress={premium ? () => comingSoon('GPX export') : openPremium}
       />
 
       <SectionHeader variant="label" title="About" />
@@ -287,4 +314,35 @@ const makeStyles = (c) => ({
     backgroundColor: c.accentContainer,
   },
   tagText: { color: c.onAccentContainer, letterSpacing: 0 },
+  flex: { flex: 1, minWidth: 0 },
+  premium: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 14,
+    marginTop: 12,
+    paddingVertical: 14,
+    paddingLeft: 16,
+    paddingRight: 14,
+    borderRadius: 12,
+    backgroundColor: c.accentContainer,
+  },
+  premiumWell: {
+    width: 44,
+    height: 44,
+    borderRadius: 22,
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: c.accentWell,
+  },
+  premiumTitle: { color: c.onAccentContainer, fontSize: 17 },
+  premiumText: { color: c.accentContainerMuted, fontSize: 13, lineHeight: 18 },
+  view: {
+    height: 36,
+    paddingHorizontal: 14,
+    borderRadius: 18,
+    justifyContent: 'center',
+    backgroundColor: c.accent,
+  },
+  viewText: { color: c.onAccent },
+  pressed: { opacity: 0.85 },
 });

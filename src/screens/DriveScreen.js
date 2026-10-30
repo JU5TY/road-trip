@@ -15,6 +15,7 @@ import RouteMap from '../components/RouteMap';
 import { useSettings } from '../context/SettingsContext';
 import { usePhotos } from '../hooks/usePhotos';
 import { useRoadTotals } from '../hooks/useRoadTotals';
+import { openPremium, usePremium } from '../hooks/usePremium';
 import { useStyles, useTheme } from '../hooks/useTheme';
 import { ensureDrivePlaces } from '../services/placeService';
 import { deleteDrive, getDrive, getDrivePoints } from '../storage/driveStorage';
@@ -23,6 +24,7 @@ import { getTrip } from '../storage/tripStorage';
 import { getVehicleNames } from '../storage/vehicleStorage';
 import { dayColorFor } from '../theme';
 import { countryRows } from '../utils/countries';
+import { driveGaps, routeSegments, withoutCrossings } from '../utils/crossings';
 import { formatDate, formatDayDate, formatTime } from '../utils/format';
 import { averageMovingSpeed, downsample } from '../utils/geoMath';
 import { getRoad } from '../utils/iconicRoads';
@@ -40,6 +42,7 @@ import {
 export default function DriveScreen() {
   const { id } = useLocalSearchParams();
   const { units, showIconicRoads } = useSettings();
+  const premium = usePremium();
   const { c } = useTheme();
   const styles = useStyles(makeStyles);
   const [drive, setDrive] = useState(null);
@@ -81,7 +84,13 @@ export default function DriveScreen() {
 
   const route = useMemo(
     () =>
-      points ? downsample(points).map(({ latitude, longitude }) => ({ latitude, longitude })) : [],
+      points
+        ? downsample(points).map(({ latitude, longitude, timestamp }) => ({
+            latitude,
+            longitude,
+            timestamp,
+          }))
+        : [],
     [points]
   );
   const chartMarkers = useMemo(
@@ -140,7 +149,7 @@ export default function DriveScreen() {
       ref={mapRef}
       flat
       highlight={highlight}
-      segments={[{ key: 'route', coordinates: route, color }]}
+      segments={routeSegments('route', route, driveGaps(drive), color)}
       markers={routeMarkers({
         firstPoint: route[0],
         lastPoint: route.at(-1),
@@ -162,7 +171,11 @@ export default function DriveScreen() {
         hideTimes
           ? [{ icon: 'more_horiz', label: 'More options', onPress: () => setMenu('options') }]
           : [
-              { icon: 'download', label: 'Export', onPress: () => comingSoon('Exporting drives') },
+              {
+                icon: 'download',
+                label: 'Export',
+                onPress: premium ? () => comingSoon('Exporting drives') : openPremium,
+              },
               { icon: 'more_horiz', label: 'More options', onPress: () => setMenu('options') },
               {
                 icon: 'ios_share',
@@ -225,7 +238,7 @@ export default function DriveScreen() {
       />
       <CountriesSection rows={countries} units={units} scope="drive" />
       <ChartsCard
-        tracks={[{ key: 'route', color, points }]}
+        tracks={[{ key: 'route', color, points: withoutCrossings(points, driveGaps(drive)) }]}
         units={units}
         avgSpeedMps={averageMovingSpeed(drive.stats)}
         onScrub={setHighlight}

@@ -53,7 +53,7 @@ function summaryLine(trips, units) {
   return `${prefix}${count} · ${distance.value} ${distance.unit}`;
 }
 
-/** No trips yet: a short explainer and a Record a drive button. */
+/** No trips yet: a short explainer and a Record button. */
 function EmptyTrips() {
   const { c } = useTheme();
   const styles = useStyles(makeStyles);
@@ -71,7 +71,7 @@ function EmptyTrips() {
         size="small"
         icon="radio_button_checked"
         iconFilled
-        label="Record a drive"
+        label="Record"
         style={styles.emptyButton}
         onPress={() => router.navigate('/record')}
       />

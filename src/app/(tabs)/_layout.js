@@ -54,7 +54,7 @@ function TabBar({ state, descriptors, emitter, navigateToTab, insets }) {
 }
 
 /**
- * Floating pill above the nav on Home and Trips: "Record a drive", or just the
+ * Floating pill above the nav on Home and Trips: "Record", or just the
  * red dot while a drive is recording. Both open Record, whose Ready screen
  * offers to continue a recent trip or start a new one.
  */
@@ -66,7 +66,7 @@ function RecordPill() {
   const { drive } = useActiveDrive();
 
   if (pathname !== '/' && pathname !== '/trips') return null;
-  const label = drive ? null : 'Record a drive';
+  const label = drive ? null : 'Record';
 
   return (
     <Pressable

@@ -220,6 +220,12 @@ export default function TripScreen() {
     );
   }, [trip, pointsByDrive, days, dayColorOf]);
 
+  const driveColors = useMemo(
+    () =>
+      new Map(days.flatMap((day) => day.drives.map((d) => [d.id, dayColorOf(day.number)]))),
+    [days, dayColorOf]
+  );
+
   const tracks = useMemo(
     () =>
       days.flatMap((day) =>
@@ -302,6 +308,7 @@ export default function TripScreen() {
         endName: last.places.end,
         drives: trip.drives,
         c,
+        colorOf: (d) => driveColors.get(d.id),
       })}
     />
   );

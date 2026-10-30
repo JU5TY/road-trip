@@ -157,6 +157,7 @@ export default function DriveScreen() {
         endName: drive.places.end,
         drives: [drive],
         c,
+        colorOf: () => color,
       })}
     />
   );

@@ -15,7 +15,9 @@ const DOTS = { lineDashPattern: [1, 10], lineCap: 'round' };
  * Map of one or more route segments.
  * segments: [{ key, coordinates: [{latitude, longitude}], color, dotted? }]
  *           (`dotted` for a ferry or tunnel crossing, see utils/crossings.js)
- * markers:  [{ key, coordinate, title, description?, color }]
+ * markers:  [{ key, kind: 'start' | 'finish' | 'stop', coordinate, title, description?, color }]
+ *           start and finish are filled dots, a rest stop a ring in its route
+ *           colour (the same marks as the Trips list outline and the Timeline)
  * highlight: optional { latitude, longitude } shown as a dot (e.g. while
  *            dragging across a chart).
  * `ref` exposes focusMarker(key): zoom to that marker and open its callout.
@@ -81,7 +83,7 @@ export default function RouteMap({
               {...(s.dotted ? DOTS : null)}
             />
           ))}
-          {markers.map((m) => (
+          {markers.map((m, i) => (
             <Marker
               key={m.key}
               ref={(r) => {
@@ -91,8 +93,18 @@ export default function RouteMap({
               coordinate={m.coordinate}
               title={m.title}
               description={m.description}
-              pinColor={m.color}
-            />
+              anchor={{ x: 0.5, y: 0.5 }}
+              zIndex={i}
+              tracksViewChanges={false}
+            >
+              <View
+                style={
+                  m.kind === 'stop'
+                    ? [styles.ring, { borderColor: m.color }]
+                    : [styles.dot, { backgroundColor: m.color }]
+                }
+              />
+            </Marker>
           ))}
           {highlight ? (
             <Marker
@@ -118,6 +130,20 @@ const makeStyles = (c) => ({
   flat: { flex: 1, backgroundColor: c.surface },
   empty: { flex: 1, alignItems: 'center', justifyContent: 'center', padding: spacing.md },
   emptyText: { ...type.small, color: c.textMuted },
+  dot: {
+    width: 14,
+    height: 14,
+    borderRadius: 7,
+    borderWidth: 2,
+    borderColor: c.mapRoad,
+  },
+  ring: {
+    width: 14,
+    height: 14,
+    borderRadius: 7,
+    borderWidth: 3,
+    backgroundColor: c.mapRoad,
+  },
   highlight: {
     width: 16,
     height: 16,

@@ -1,7 +1,8 @@
 import { router, useFocusEffect, useLocalSearchParams } from 'expo-router';
 import { useCallback, useMemo, useState } from 'react';
-import { Alert, Linking, Pressable, Text, View } from 'react-native';
+import { Linking, Pressable, Text, View } from 'react-native';
 
+import { showMessage } from '../components/ui/DialogHost';
 import DetailLayout from '../components/detail/DetailLayout';
 import RouteMap from '../components/RouteMap';
 import Icon from '../components/ui/Icon';
@@ -123,7 +124,7 @@ export default function RoadScreen() {
     const [lat, lng] = road.line[0];
     Linking.openURL(
       `https://www.google.com/maps/dir/?api=1&destination=${lat},${lng}&travelmode=driving`
-    ).catch(() => Alert.alert('Google Maps', 'Could not open Google Maps.'));
+    ).catch(() => showMessage('Google Maps', 'Couldn’t open Google Maps.'));
   };
 
   const map = (

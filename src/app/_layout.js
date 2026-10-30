@@ -9,6 +9,7 @@ import { StatusBar } from 'expo-status-bar';
 import { useEffect } from 'react';
 import { View } from 'react-native';
 
+import DialogHost from '../components/ui/DialogHost';
 import { SettingsProvider, useSettings } from '../context/SettingsContext';
 import { useTheme } from '../hooks/useTheme';
 import { checkAllCountriesIfNeeded } from '../storage/countryStorage';
@@ -71,6 +72,7 @@ function AppStack() {
           <Stack.Screen name="your-map" />
         </Stack.Protected>
       </Stack>
+      <DialogHost />
     </>
   );
 }

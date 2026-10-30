@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react';
-import { Alert } from 'react-native';
 
+import { showMessage } from './ui/DialogHost';
 import { moveDrive } from '../storage/driveStorage';
 import { listTrips } from '../storage/tripStorage';
 import { formatDate, formatDateRange } from '../utils/format';
@@ -28,7 +28,7 @@ export default function MoveDriveSheet({ visible, drive, allowNewTrip, onMoved, 
     try {
       onMoved(await moveDrive(drive.id, targetTripId));
     } catch (err) {
-      Alert.alert('Move drive', err.message);
+      showMessage('Couldn’t move the drive', err.message);
     }
   };
 

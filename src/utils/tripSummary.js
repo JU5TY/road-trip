@@ -81,6 +81,13 @@ export function tripTitle(trip) {
   return trip.name || tripRouteLabel(trip);
 }
 
+/** Body of the "Delete this trip?" dialog (Trips list and the Trip page). */
+export function deleteTripMessage(trip, fallbackName) {
+  const name = tripTitle(trip) ?? fallbackName;
+  const count = trip.drives.length;
+  return `${name}${count > 1 ? ` and its ${count} drives` : ''} will be deleted. This can't be undone.`;
+}
+
 /** Offer "Continue" on a trip whose latest drive ended within this long. */
 export const CONTINUE_WINDOW_MS = 3 * 24 * 60 * 60 * 1000;
 

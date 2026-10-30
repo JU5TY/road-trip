@@ -2,10 +2,11 @@ import { useKeepAwake } from 'expo-keep-awake';
 import * as Location from 'expo-location';
 import { router, useFocusEffect, useIsFocused } from 'expo-router';
 import { useCallback, useEffect, useRef, useState } from 'react';
-import { ActivityIndicator, Alert, Linking, Pressable, StyleSheet, Text, View } from 'react-native';
+import { ActivityIndicator, Linking, Pressable, StyleSheet, Text, View } from 'react-native';
 import MapView, { Polyline } from 'react-native-maps';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
+import { showMessage } from '../components/ui/DialogHost';
 import PermissionSheet from '../components/PermissionSheet';
 import ConfirmDialog from '../components/ui/ConfirmDialog';
 import Icon from '../components/ui/Icon';
@@ -14,6 +15,7 @@ import { useSettings } from '../context/SettingsContext';
 import { useStyles, useTheme } from '../hooks/useTheme';
 import {
   canTrackInBackground,
+  discardDrive,
   getLocationAccess,
   pauseDrive,
   requestLocationAccess,
@@ -252,7 +254,7 @@ export default function RecordScreen() {
     try {
       await action();
     } catch (err) {
-      Alert.alert('Road Trip', err.message);
+      showMessage('Something went wrong', err.message);
     } finally {
       setBusy(false);
     }
@@ -279,6 +281,13 @@ export default function RecordScreen() {
       const driveId = await stopDrive();
       setDrive(null);
       if (driveId) router.push(`/saved/${driveId}`);
+    });
+
+  // Nothing recorded: no drive to save, back to Ready.
+  const discard = () =>
+    run(async () => {
+      await discardDrive();
+      setDrive(null);
     });
 
   // Pause stops GPS; the gap is drawn dotted and isn't counted as driving.
@@ -318,7 +327,7 @@ export default function RecordScreen() {
 
   const openGoogleMaps = () =>
     Linking.openURL(GOOGLE_MAPS_NAV_URL).catch(() =>
-      Alert.alert('Google Maps', 'Could not open Google Maps.')
+      showMessage('Google Maps', 'Couldn’t open Google Maps.')
     );
 
   const live = drive ? liveMetrics(drive, now) : null;
@@ -441,18 +450,33 @@ export default function RecordScreen() {
   return (
     <View style={styles.screen}>
       {permissionSheet}
-      <ConfirmDialog
-        visible={confirmingStop}
-        title="Save this drive?"
-        highlight={`${distance} · ${driving}`}
-        message="Drive again within 3 days to continue this trip."
-        confirmLabel="Save"
-        onCancel={() => setConfirmingStop(false)}
-        onConfirm={() => {
-          setConfirmingStop(false);
-          stop();
-        }}
-      />
+      {live.distanceM > 0 ? (
+        <ConfirmDialog
+          visible={confirmingStop}
+          title="Save this drive?"
+          highlight={`${distance} · ${driving}`}
+          message="Drive again within 3 days to continue this trip."
+          confirmLabel="Save"
+          onCancel={() => setConfirmingStop(false)}
+          onConfirm={() => {
+            setConfirmingStop(false);
+            stop();
+          }}
+        />
+      ) : (
+        <ConfirmDialog
+          visible={confirmingStop}
+          title="Nothing recorded yet"
+          message="You haven’t moved yet, so there’s no drive to save."
+          confirmLabel="Discard"
+          destructive
+          onCancel={() => setConfirmingStop(false)}
+          onConfirm={() => {
+            setConfirmingStop(false);
+            discard();
+          }}
+        />
+      )}
       {/* Mid-drive the phone is usually in a mount: don't let the screen sleep. */}
       {focused ? <KeepScreenOn /> : null}
       {!mapHidden ? (

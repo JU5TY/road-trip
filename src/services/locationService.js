@@ -10,6 +10,7 @@ import {
   appendFixes,
   completeDrive,
   createDrive,
+  deleteDrive,
   getActiveDrive,
   getDrive,
 } from '../storage/driveStorage';
@@ -264,6 +265,18 @@ export async function stopDrive() {
       .then((completed) => ensureDrivePlaces(completed, { includeStops: true }))
       .catch((err) => console.warn('[locationService] place lookup failed', err));
     return drive.id;
+  });
+}
+
+/**
+ * Stop recording and throw the active drive away (Record's "Nothing recorded
+ * yet"). Its trip goes too if the drive was all it had.
+ */
+export async function discardDrive() {
+  await stopUpdates();
+  return enqueue(async () => {
+    const drive = await getActiveDrive();
+    if (drive) await deleteDrive(drive.id);
   });
 }
 

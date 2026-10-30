@@ -1,9 +1,10 @@
 import Constants from 'expo-constants';
 import { router } from 'expo-router';
 import { useState } from 'react';
-import { Alert, Pressable, ScrollView, Text, View } from 'react-native';
+import { Pressable, ScrollView, Text, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
+import { showMessage } from '../components/ui/DialogHost';
 import ActionSheet from '../components/ActionSheet';
 import VehicleSheet from '../components/VehicleSheet';
 import Icon from '../components/ui/Icon';
@@ -258,7 +259,7 @@ export default function SettingsScreen() {
         icon="lock"
         title="Privacy"
         onPress={() =>
-          Alert.alert(
+          showMessage(
             'Privacy',
             'Your trips stay on this phone. Your location and photos are never uploaded or shared.'
           )
@@ -271,7 +272,7 @@ export default function SettingsScreen() {
         value={version}
         chevron={false}
         onPress={() =>
-          Alert.alert(`Road Trip ${version}`, `${ROADS_ATTRIBUTION}\n${COUNTRIES_ATTRIBUTION}`)
+          showMessage(`Road Trip ${version}`, `${ROADS_ATTRIBUTION}\n${COUNTRIES_ATTRIBUTION}`)
         }
         divider={__DEV__}
       />

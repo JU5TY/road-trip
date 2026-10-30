@@ -1,5 +1,4 @@
-import { Alert } from 'react-native';
+import { showMessage } from '../components/ui/DialogHost';
 
 /** Placeholder for features shown in the design but not built yet (Premium, Share, Export). */
-export const comingSoon = (what) =>
-  Alert.alert('Coming soon', `${what} is coming in a future update.`);
+export const comingSoon = (what) => showMessage('Coming soon', `${what} is coming in a future update.`);

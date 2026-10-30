@@ -1,7 +1,8 @@
 import { router, useFocusEffect, useLocalSearchParams } from 'expo-router';
 import { useCallback, useMemo, useRef, useState } from 'react';
-import { ActivityIndicator, Alert, Pressable, Text, View } from 'react-native';
+import { ActivityIndicator, Pressable, Text, View } from 'react-native';
 
+import { showDialog } from '../components/ui/DialogHost';
 import ActionSheet from '../components/ActionSheet';
 import ChartsCard from '../components/charts/ChartsCard';
 import TripPhotos from '../components/photos/TripPhotos';
@@ -41,6 +42,7 @@ import { comingSoon } from '../utils/comingSoon';
 import { countryRows } from '../utils/countries';
 import { buildTripTimeline } from '../utils/timeline';
 import {
+  deleteTripMessage,
   groupIntoDays,
   routeLabel,
   summarizeDrives,
@@ -284,15 +286,13 @@ export default function TripScreen() {
 
   const confirmDelete = () => {
     setMenu(null);
-    const what = single ? 'This drive' : `All ${trip.drives.length} drives in this trip`;
-    Alert.alert('Delete trip?', `${what} will be deleted. This can't be undone.`, [
-      { text: 'Cancel', style: 'cancel' },
-      {
-        text: 'Delete',
-        style: 'destructive',
-        onPress: () => deleteTrip(trip.id).then(() => router.back()),
-      },
-    ]);
+    showDialog({
+      title: 'Delete this trip?',
+      message: deleteTripMessage(trip, formatDate(first.startedAt)),
+      confirmLabel: 'Delete',
+      destructive: true,
+      onConfirm: () => deleteTrip(trip.id).then(() => router.back()),
+    });
   };
 
   const map = (

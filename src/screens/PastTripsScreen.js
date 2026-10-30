@@ -1,9 +1,10 @@
 import { router, useFocusEffect } from 'expo-router';
 import { useCallback, useMemo, useState } from 'react';
-import { Alert, FlatList, Text, View } from 'react-native';
+import { FlatList, Text, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import RecordingBar from '../components/RecordingBar';
+import { showDialog } from '../components/ui/DialogHost';
 import TripCard from '../components/TripCard';
 import Button from '../components/ui/Button';
 import Icon from '../components/ui/Icon';
@@ -15,7 +16,7 @@ import { ensureDrivePlaces } from '../services/placeService';
 import { deleteTrip, listTrips } from '../storage/tripStorage';
 import { radius, spacing, type } from '../theme';
 import { distanceParts, formatDate } from '../utils/format';
-import { computeTotals, tripTitle } from '../utils/tripSummary';
+import { computeTotals, deleteTripMessage } from '../utils/tripSummary';
 
 /** "November", or "November 2025" outside the current year. */
 function monthLabel(ts, thisYear) {
@@ -119,25 +120,15 @@ export default function PastTripsScreen() {
 
   const rows = useMemo(() => withMonthHeaders(trips ?? []), [trips]);
 
-  const confirmDelete = (trip) => {
-    const what =
-      trip.drives.length === 1 ? 'This trip' : `This trip and its ${trip.drives.length} drives`;
-    Alert.alert(
-      'Delete trip?',
-      `${tripTitle(trip) ?? formatDate(trip.drives[0].startedAt)}\n${what} will be deleted.`,
-      [
-        { text: 'Cancel', style: 'cancel' },
-        {
-          text: 'Delete',
-          style: 'destructive',
-          onPress: () =>
-            deleteTrip(trip.id).then(() =>
-              setTrips((prev) => prev.filter((t) => t.id !== trip.id))
-            ),
-        },
-      ]
-    );
-  };
+  const confirmDelete = (trip) =>
+    showDialog({
+      title: 'Delete this trip?',
+      message: deleteTripMessage(trip, formatDate(trip.drives[0].startedAt)),
+      confirmLabel: 'Delete',
+      destructive: true,
+      onConfirm: () =>
+        deleteTrip(trip.id).then(() => setTrips((prev) => prev.filter((t) => t.id !== trip.id))),
+    });
 
   const header = (
     <View>

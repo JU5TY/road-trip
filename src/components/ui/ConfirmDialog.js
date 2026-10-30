@@ -6,7 +6,8 @@ import { type } from '../../theme';
 /**
  * Centred dialog: a title, an optional bold `highlight` line (e.g. Record's
  * "48.7 mi · 1h 12m"), a message, and two equal buttons side by side: an
- * outlined Cancel and a filled action. `destructive` makes the action red.
+ * outlined Cancel and a filled action. `destructive` makes the action red;
+ * `cancelLabel={null}` leaves just the action (an OK for messages).
  */
 export default function ConfirmDialog({
   visible,
@@ -33,15 +34,17 @@ export default function ConfirmDialog({
             </Text>
           ) : null}
           <View style={styles.buttons}>
-            <Pressable
-              onPress={onCancel}
-              style={({ pressed }) => [styles.button, styles.cancel, pressed && styles.pressed]}
-              accessibilityRole="button"
-            >
-              <Text style={[type.button, { color: c.accent }]} numberOfLines={1}>
-                {cancelLabel}
-              </Text>
-            </Pressable>
+            {cancelLabel !== null ? (
+              <Pressable
+                onPress={onCancel}
+                style={({ pressed }) => [styles.button, styles.cancel, pressed && styles.pressed]}
+                accessibilityRole="button"
+              >
+                <Text style={[type.button, { color: c.accent }]} numberOfLines={1}>
+                  {cancelLabel}
+                </Text>
+              </Pressable>
+            ) : null}
             <Pressable
               onPress={onConfirm}
               style={({ pressed }) => [

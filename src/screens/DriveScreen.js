@@ -1,7 +1,8 @@
 import { router, useLocalSearchParams } from 'expo-router';
 import { useEffect, useMemo, useRef, useState } from 'react';
-import { ActivityIndicator, Alert, View } from 'react-native';
+import { ActivityIndicator, View } from 'react-native';
 
+import { showDialog } from '../components/ui/DialogHost';
 import ActionSheet from '../components/ActionSheet';
 import ChartsCard from '../components/charts/ChartsCard';
 import CountriesSection from '../components/countries/CountriesSection';
@@ -134,14 +135,13 @@ export default function DriveScreen() {
 
   const confirmDelete = () => {
     setMenu(null);
-    Alert.alert('Delete this drive?', 'Its route and stats will be removed from the trip.', [
-      { text: 'Cancel', style: 'cancel' },
-      {
-        text: 'Delete',
-        style: 'destructive',
-        onPress: () => deleteDrive(drive.id).then(() => router.back()),
-      },
-    ]);
+    showDialog({
+      title: 'Delete this drive?',
+      message: "Its route and stats will be removed from the trip. This can't be undone.",
+      confirmLabel: 'Delete',
+      destructive: true,
+      onConfirm: () => deleteDrive(drive.id).then(() => router.back()),
+    });
   };
 
   const map = (

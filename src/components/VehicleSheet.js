@@ -1,7 +1,8 @@
 import { useState } from 'react';
-import { Alert, KeyboardAvoidingView, Modal, Pressable, Text, TextInput, View } from 'react-native';
+import { KeyboardAvoidingView, Modal, Pressable, Text, TextInput, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
+import { showDialog } from './ui/DialogHost';
 import { useStyles, useTheme } from '../hooks/useTheme';
 import { radius, spacing, type } from '../theme';
 import Button from './ui/Button';
@@ -15,10 +16,13 @@ function VehicleForm({ vehicle, onSave, onDelete, onClose }) {
   const valid = name.trim().length > 0;
 
   const confirmDelete = () =>
-    Alert.alert(`Remove ${vehicle.name}?`, 'Your trips stay; they just won’t name a vehicle.', [
-      { text: 'Cancel', style: 'cancel' },
-      { text: 'Remove', style: 'destructive', onPress: onDelete },
-    ]);
+    showDialog({
+      title: `Remove ${vehicle.name}?`,
+      message: 'Your trips stay; they just won’t name a vehicle.',
+      confirmLabel: 'Remove',
+      destructive: true,
+      onConfirm: onDelete,
+    });
 
   return (
     <View style={[styles.sheet, { paddingBottom: spacing.lg + insets.bottom }]}>

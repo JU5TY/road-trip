@@ -1,14 +1,13 @@
 import { router } from 'expo-router';
 import { useEffect, useMemo, useState } from 'react';
 import { Pressable, View } from 'react-native';
-import Svg, { Circle, Polyline } from 'react-native-svg';
 
 import { useStyles, useTheme } from '../../hooks/useTheme';
 import { getDriveRoutePreview } from '../../storage/driveStorage';
 import { dayColorFor } from '../../theme';
 import { driveGaps, splitAtCrossings } from '../../utils/crossings';
-import { fitInCircle } from '../../utils/routeOutline';
 import { groupIntoDays } from '../../utils/tripSummary';
+import RouteCircle from '../RouteCircle';
 import Icon from '../ui/Icon';
 
 const SIZE = 216;
@@ -71,25 +70,28 @@ export default function YourMap({ trips }) {
   const parts = useAllRoutes(trips);
   const multiDay = groupIntoDays(trips[0]?.drives ?? []).length > 1;
 
-  const lines = useMemo(() => {
-    const fit = fitInCircle(
-      parts.map((p) => p.coordinates),
-      SIZE
-    );
-    if (!fit) return [];
-    const line = (p) => ({ points: fit.points(p.coordinates), dotted: p.crossing !== null });
-    // Older routes first, so the latest trip is drawn on top.
-    return [
-      ...parts.filter((p) => p.day === null).map((p) => ({ ...line(p), latest: false })),
+  // Older routes first, so the latest trip is drawn on top.
+  const lines = useMemo(
+    () => [
+      ...parts
+        .filter((p) => p.day === null)
+        .map((p) => ({
+          coordinates: p.coordinates,
+          dotted: p.crossing !== null,
+          color: c.accent,
+          opacity: 0.4,
+        })),
       ...parts
         .filter((p) => p.day !== null)
         .map((p) => ({
-          ...line(p),
-          latest: true,
+          coordinates: p.coordinates,
+          dotted: p.crossing !== null,
           color: multiDay ? dayColorFor(c, p.day) : c.accent,
+          width: 4.5,
         })),
-    ];
-  }, [parts, multiDay, c]);
+    ],
+    [parts, multiDay, c]
+  );
 
   return (
     <Pressable
@@ -99,22 +101,7 @@ export default function YourMap({ trips }) {
       style={({ pressed }) => [styles.wrap, pressed && styles.pressed]}
     >
       <View style={styles.circle}>
-        <Svg width={SIZE} height={SIZE}>
-          <Circle cx={SIZE / 2} cy={SIZE / 2} r={SIZE / 2} fill={c.mapLand} />
-          {lines.map((l, i) => (
-            <Polyline
-              key={i}
-              points={l.points}
-              fill="none"
-              stroke={l.latest ? l.color : c.accent}
-              strokeOpacity={l.latest ? 1 : 0.4}
-              strokeWidth={l.latest ? 4.5 : 3}
-              strokeLinecap="round"
-              strokeLinejoin="round"
-              strokeDasharray={l.dotted ? '0.1 7' : undefined}
-            />
-          ))}
-        </Svg>
+        <RouteCircle size={SIZE} lines={lines} />
       </View>
       <View style={styles.expand}>
         <Icon name="open_in_full" size={20} color={c.text} />

@@ -46,7 +46,6 @@ const light = {
   mapLand: '#EEF2EC',
   mapWater: '#C9DDF2',
   mapRoad: '#FFFFFF',
-  mapRing: '#E3ECFB', // ring around the round Your map
   progressTrack: '#E3E5E8',
   outlinedRow: '#FFFFFF', // not-yet Iconic Road rows
   screen: '#FFFFFF', // full-screen pages without cards (Record, Drive saved)
@@ -120,7 +119,6 @@ const dark = {
   mapLand: '#1C2226',
   mapWater: '#1E3348',
   mapRoad: '#2C343A',
-  mapRing: '#283447',
   progressTrack: '#3A3B3F',
   outlinedRow: '#26272B',
   screen: '#202124',

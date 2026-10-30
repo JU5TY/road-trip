@@ -12,7 +12,6 @@ import { groupIntoDays } from '../../utils/tripSummary';
 import Icon from '../ui/Icon';
 
 const SIZE = 216;
-const INNER = SIZE - 2; // inside the 1 px border
 const POINTS_PER_DRIVE = 80;
 
 // The last routes drawn, so coming back to Home doesn't reload every drive.
@@ -75,7 +74,7 @@ export default function YourMap({ trips }) {
   const lines = useMemo(() => {
     const fit = fitInCircle(
       parts.map((p) => p.coordinates),
-      INNER
+      SIZE
     );
     if (!fit) return [];
     const line = (p) => ({ points: fit.points(p.coordinates), dotted: p.crossing !== null });
@@ -100,8 +99,8 @@ export default function YourMap({ trips }) {
       style={({ pressed }) => [styles.wrap, pressed && styles.pressed]}
     >
       <View style={styles.circle}>
-        <Svg width={INNER} height={INNER}>
-          <Circle cx={INNER / 2} cy={INNER / 2} r={INNER / 2} fill={c.mapLand} />
+        <Svg width={SIZE} height={SIZE}>
+          <Circle cx={SIZE / 2} cy={SIZE / 2} r={SIZE / 2} fill={c.mapLand} />
           {lines.map((l, i) => (
             <Polyline
               key={i}
@@ -125,20 +124,12 @@ export default function YourMap({ trips }) {
 }
 
 const makeStyles = (c) => ({
-  // The shadow sits here, as the clipped circle inside would cut it off on iOS.
-  wrap: {
-    width: SIZE,
-    height: SIZE,
-    borderRadius: SIZE / 2,
-    backgroundColor: c.mapLand,
-    ...c.mapRingShadow,
-  },
+  // No border or shadow, like the Trips list's round outlines.
+  wrap: { width: SIZE, height: SIZE },
   circle: {
     width: SIZE,
     height: SIZE,
     borderRadius: SIZE / 2,
-    borderWidth: 1,
-    borderColor: c.mapBorder,
     overflow: 'hidden',
     backgroundColor: c.mapLand,
   },

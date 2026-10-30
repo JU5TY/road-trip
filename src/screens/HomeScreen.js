@@ -38,7 +38,7 @@ function MapHero({ trips, units, insetTop }) {
         {distance.value}
         <Text style={styles.totalUnit}> {distance.unit}</Text>
       </Text>
-      <Text style={[type.bodyLarge, styles.muted]}>driven since {firstDriveMonth(trips)}</Text>
+      <Text style={[type.bodyLarge, styles.muted, styles.since]}>driven since {firstDriveMonth(trips)}</Text>
     </View>
   );
 }
@@ -166,12 +166,13 @@ const makeStyles = (c) => ({
   total: {
     fontFamily: type.stat.fontFamily,
     fontSize: 44,
-    lineHeight: 52,
+    lineHeight: 48,
     letterSpacing: -0.5,
     color: c.accent,
     marginTop: 16,
   },
   totalUnit: { fontSize: 20 },
+  since: { marginTop: 4 }, // ~6 under the number's glyphs
   text: { color: c.text },
   muted: { color: c.textMuted },
   mutedSmall: { color: c.textMuted, fontSize: 14, lineHeight: 20 },

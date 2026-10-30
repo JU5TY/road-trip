@@ -64,3 +64,14 @@ export function getTheme() {
 export function setTheme(theme) {
   return Storage.setItemAsync(THEME_KEY, theme);
 }
+
+const RECORD_MAP_HIDDEN_KEY = 'recordMapHidden';
+
+/** Whether Record's map was hidden last time, so the next drive starts the same way. */
+export function getRecordMapHidden() {
+  return Storage.getItemSync(RECORD_MAP_HIDDEN_KEY) === 'true';
+}
+
+export function setRecordMapHidden(hidden) {
+  return Storage.setItemAsync(RECORD_MAP_HIDDEN_KEY, String(hidden));
+}

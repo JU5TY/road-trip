@@ -44,7 +44,6 @@ const light = {
   finish: '#D93025',
   // Drawn map illustrations (Welcome, empty Home, Your map).
   mapLand: '#EEF2EC',
-  mapBorder: '#E3E5E8', // Home's round map
   mapWater: '#C9DDF2',
   mapRoad: '#FFFFFF',
   mapRing: '#E3ECFB', // ring around the round Your map
@@ -69,14 +68,6 @@ const light = {
     shadowRadius: 3,
     shadowOffset: { width: 0, height: 1 },
     elevation: 2,
-  },
-  // Home's round map: a soft shadow in light, just the border in dark.
-  mapRingShadow: {
-    shadowColor: '#3C4043',
-    shadowOpacity: 0.18,
-    shadowRadius: 8,
-    shadowOffset: { width: 0, height: 2 },
-    elevation: 4,
   },
   dayColors: ['#F29900', '#E52592', '#9334E6'],
   // Number badges in the Drives list: [background, text] per day colour.
@@ -127,7 +118,6 @@ const dark = {
   start: '#34A853',
   finish: '#EA4335',
   mapLand: '#1C2226',
-  mapBorder: '#3C4043',
   mapWater: '#1E3348',
   mapRoad: '#2C343A',
   mapRing: '#283447',
@@ -146,7 +136,6 @@ const dark = {
   onNavPill: '#8AB4F8',
   scrim: 'rgba(0,0,0,0.5)',
   cardShadow: null,
-  mapRingShadow: null,
   dayColors: ['#FDD663', '#FF8BCB', '#C58AF9'],
   dayBadges: [
     ['#3D3214', '#FDD663'],

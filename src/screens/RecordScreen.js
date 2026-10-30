@@ -22,10 +22,11 @@ import {
   stopDrive,
 } from '../services/locationService';
 import { getActiveDrive, getDriveRoutePreview } from '../storage/driveStorage';
+import { getRecordMapHidden, setRecordMapHidden } from '../storage/settingsStorage';
 import { getContinuableTrip, getTrip } from '../storage/tripStorage';
 import { spacing, type } from '../theme';
 import { driveGaps, routeSegments } from '../utils/crossings';
-import { distanceParts, formatDistance, formatDurationShort, formatSpeed } from '../utils/format';
+import { formatDistance, formatDurationShort, speedUnit, toSpeed } from '../utils/format';
 import { liveMetrics } from '../utils/geoMath';
 import { CONTINUE_WINDOW_MS, dayNumberFor, summarizeDrives, tripTitle } from '../utils/tripSummary';
 
@@ -157,7 +158,12 @@ export default function RecordScreen() {
   const [sheet, setSheet] = useState(null); // PermissionSheet kind, or null
   const [recent, setRecent] = useState(null); // trip that can be continued, if any
   const [choice, setChoice] = useState('continue'); // 'continue' | 'new'
-  const [mapHidden, setMapHidden] = useState(false);
+  // Remembered between drives.
+  const [mapHidden, setMapHiddenState] = useState(getRecordMapHidden);
+  const setMapHidden = (hidden) => {
+    setMapHiddenState(hidden);
+    setRecordMapHidden(hidden).catch((err) => console.warn('[record] save failed', err));
+  };
   const [confirmingStop, setConfirmingStop] = useState(false);
   const [centreKey, setCentreKey] = useState(0);
   const [here, setHere] = useState(null); // last known position, for the Ready map
@@ -215,10 +221,9 @@ export default function RecordScreen() {
       .then((trip) => {
         if (cancelled || !trip) return;
         const day = dayNumberFor(trip.drives, activeStartedAt);
-        setTripLabelFor({
-          driveId: activeId,
-          text: `${tripTitle(trip) ?? 'New trip'} · Day ${day}`,
-        });
+        const name = tripTitle(trip) ?? 'New trip';
+        // Day 1 (or a one-day trip) is just the trip's name.
+        setTripLabelFor({ driveId: activeId, text: day > 1 ? `${name} · Day ${day}` : name });
       })
       .catch((err) => console.warn('[record] trip label failed', err));
     return () => {
@@ -273,7 +278,6 @@ export default function RecordScreen() {
     run(async () => {
       const driveId = await stopDrive();
       setDrive(null);
-      setMapHidden(false);
       if (driveId) router.push(`/saved/${driveId}`);
     });
 
@@ -422,15 +426,17 @@ export default function RecordScreen() {
         : live.isAutoPaused
           ? 'Stopped'
           : 'Recording';
-  const distance = distanceParts(live.distanceM, units);
-  const avgSpeedMps = live.drivingMs > 0 ? live.distanceM / (live.drivingMs / 1000) : 0;
+  const speed = paused ? 0 : Math.round(toSpeed(live.currentSpeedMps, units));
+  const distance = formatDistance(live.distanceM, units);
+  const driving = formatDurationShort(live.drivingMs);
   // Break bar: hidden until the last BREAK_SOON_MS before a break is due, then
   // counts down in blue; once due it fills orange and counts up.
   const breakDueMs = breakReminderMinutes * 60000;
   const breakSoon = breakReminderMinutes > 0 && live.stintMs >= breakDueMs - BREAK_SOON_MS;
   const breakDue = breakSoon && live.stintMs >= breakDueMs;
-  const minimise = () => router.navigate('/');
-  const unitWord = units === 'imperial' ? 'miles' : 'km';
+  const overdueMs = live.stintMs - breakDueMs;
+  // Trips shows the "Recording · 1h 12m" banner to come back.
+  const minimise = () => router.navigate('/trips');
 
   return (
     <View style={styles.screen}>
@@ -438,7 +444,7 @@ export default function RecordScreen() {
       <ConfirmDialog
         visible={confirmingStop}
         title="Stop and save this drive?"
-        message={`${formatDistance(live.distanceM, units)} · ${formatDurationShort(live.drivingMs)} driving. You can still add to this trip tomorrow.`}
+        message={`${distance} · ${driving} driving. You can still add to this trip tomorrow.`}
         cancelLabel="Keep recording"
         confirmLabel="Stop and save"
         destructive
@@ -540,39 +546,27 @@ export default function RecordScreen() {
         <View
           style={[styles.hero, mapHidden && styles.heroHidden]}
           accessible
-          accessibilityLabel={`Distance ${distance.value} ${unitWord}`}
+          accessibilityLabel={`Speed ${speed} ${speedUnit(units)}`}
         >
-          <Text
-            style={mapHidden ? styles.heroBig : styles.heroValue}
-            numberOfLines={1}
-            adjustsFontSizeToFit
-          >
-            {distance.value}
+          <Text style={mapHidden ? styles.heroBig : styles.heroValue} numberOfLines={1}>
+            {speed}
           </Text>
-          <Text style={mapHidden ? styles.heroBigUnit : styles.heroUnit}>{unitWord}</Text>
+          <Text style={mapHidden ? styles.heroBigUnit : styles.heroUnit}>{speedUnit(units)}</Text>
         </View>
 
         <View style={styles.liveStats}>
-          <View
-            style={styles.liveStat}
-            accessible
-            accessibilityLabel={`Driving ${formatDurationShort(live.drivingMs)}`}
-          >
+          <View style={styles.liveStat} accessible accessibilityLabel={`Distance ${distance}`}>
             <Text style={[type.stat, styles.liveValue]} numberOfLines={1} adjustsFontSizeToFit>
-              {formatDurationShort(live.drivingMs)}
+              {distance}
             </Text>
-            <Text style={[type.bodyLarge, styles.muted]}>driving</Text>
+            <Text style={styles.liveLabel}>distance</Text>
           </View>
           <View style={styles.liveDivider} />
-          <View
-            style={styles.liveStat}
-            accessible
-            accessibilityLabel={`Average speed ${formatSpeed(avgSpeedMps, units)}`}
-          >
+          <View style={styles.liveStat} accessible accessibilityLabel={`Driving ${driving}`}>
             <Text style={[type.stat, styles.liveValue]} numberOfLines={1} adjustsFontSizeToFit>
-              {formatSpeed(avgSpeedMps, units)}
+              {driving}
             </Text>
-            <Text style={[type.bodyLarge, styles.muted]}>avg speed</Text>
+            <Text style={styles.liveLabel}>driving</Text>
           </View>
         </View>
 
@@ -586,15 +580,12 @@ export default function RecordScreen() {
                 color={breakDue ? c.breakDue : c.text}
               />
               <Text style={[type.bodyStrong, styles.text, styles.flex]}>
-                {breakDue
-                  ? 'Time for a break'
-                  : `Break in ${formatDurationShort(breakDueMs - live.stintMs)}`}
+                {!breakDue
+                  ? `Break in ${formatDurationShort(breakDueMs - live.stintMs)}`
+                  : overdueMs < 60000
+                    ? 'Break due now'
+                    : `Break ${formatDurationShort(overdueMs)} overdue`}
               </Text>
-              {breakDue ? (
-                <Text style={[type.body, styles.muted]}>
-                  {formatDurationShort(live.stintMs)} since break
-                </Text>
-              ) : null}
             </View>
             <View style={styles.breakTrack}>
               <View
@@ -627,8 +618,8 @@ export default function RecordScreen() {
               icon="play_arrow"
               filled
               variant="filled"
-              size={96}
-              iconSize={52}
+              size={80}
+              iconSize={44}
               label="Resume"
               labelStyle={styles.controlLabel}
               style={styles.flex}
@@ -639,8 +630,8 @@ export default function RecordScreen() {
               icon="pause"
               filled
               variant="pause"
-              size={96}
-              iconSize={48}
+              size={80}
+              iconSize={40}
               label="Pause"
               labelStyle={styles.controlLabel}
               style={styles.flex}
@@ -739,33 +730,41 @@ const makeStyles = (c) => ({
   statusDotIdle: { backgroundColor: c.textMuted },
   statusTrip: { flex: 1 },
   expoGo: { marginHorizontal: 4 },
-  hero: { alignItems: 'center', marginTop: 14 },
-  heroHidden: { marginTop: 56 },
+  hero: { alignItems: 'center', marginTop: 28 },
+  heroHidden: { marginTop: 64 },
   heroValue: {
-    ...type.hero,
-    fontSize: 104,
-    lineHeight: 99,
-    letterSpacing: -3,
+    fontFamily: type.stat.fontFamily,
+    fontSize: 72,
+    lineHeight: 72,
+    letterSpacing: -2,
     color: c.textStrong,
   },
-  heroUnit: { ...type.statUnit, fontSize: 20, color: c.textMuted },
-  heroBig: { ...type.hero, fontSize: 152, lineHeight: 144, letterSpacing: -5, color: c.textStrong },
-  heroBigUnit: { ...type.statUnit, fontSize: 26, color: c.textMuted, marginTop: 4 },
-  liveStats: { flexDirection: 'row', alignItems: 'center', marginTop: 28 },
+  heroUnit: { ...type.bodyStrong, color: c.textMuted },
+  heroBig: {
+    fontFamily: type.stat.fontFamily,
+    fontSize: 120,
+    lineHeight: 120,
+    letterSpacing: -2,
+    color: c.textStrong,
+  },
+  heroBigUnit: { ...type.statUnit, fontSize: 20, color: c.textMuted },
+  liveStats: { flexDirection: 'row', alignItems: 'center', marginTop: 16 },
   liveStat: { flex: 1, alignItems: 'center' },
-  liveValue: { color: c.textStrong, fontSize: 40, lineHeight: 48 },
-  liveDivider: { width: 1, height: 56, backgroundColor: c.outline },
-  breakBox: { gap: 10, marginTop: 20, paddingVertical: 12, paddingHorizontal: 14 },
+  liveValue: { color: c.textStrong },
+  liveLabel: { ...type.body, fontSize: 14, lineHeight: 20, color: c.textMuted },
+  liveDivider: { width: 1, height: 40, backgroundColor: c.outline },
+  breakBox: { gap: 10, marginTop: 32 },
   breakTitle: { flexDirection: 'row', alignItems: 'center', gap: 8 },
   onWarning: { color: c.onWarningContainer },
   breakTrack: { height: 8, borderRadius: 4, backgroundColor: c.recordControl, overflow: 'hidden' },
   breakFill: { height: 8, borderRadius: 4, backgroundColor: c.accent },
   breakFillDue: { backgroundColor: c.breakDue },
   controls: { flexDirection: 'row', alignItems: 'flex-start' },
-  sideControl: { flex: 1, paddingTop: 16 },
+  // Centres the 64 circles on the 80 one.
+  sideControl: { flex: 1, paddingTop: 8 },
   controlLabel: { fontSize: 15, lineHeight: 20 },
   startLabel: { fontSize: 14, lineHeight: 20 },
   rowButton: { marginVertical: -8 },
   rowButtonLast: { marginRight: -8 },
-  centreBusy: { flex: 1, height: 124 },
+  centreBusy: { flex: 1, height: 108 },
 });

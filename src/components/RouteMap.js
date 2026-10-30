@@ -5,6 +5,7 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { useStyles, useTheme } from '../hooks/useTheme';
 import { radius, spacing, type } from '../theme';
+import MapDot from './MapDot';
 
 const MAP_PADDING = { top: 48, right: 48, bottom: 48, left: 48 };
 const FOCUS_DELTA = 0.01; // ~1 km across when zooming to a single marker
@@ -97,13 +98,7 @@ export default function RouteMap({
               zIndex={i}
               tracksViewChanges={false}
             >
-              <View
-                style={
-                  m.kind === 'stop'
-                    ? [styles.ring, { borderColor: m.color }]
-                    : [styles.dot, { backgroundColor: m.color }]
-                }
-              />
+              <MapDot kind={m.kind} color={m.color} />
             </Marker>
           ))}
           {highlight ? (
@@ -130,20 +125,6 @@ const makeStyles = (c) => ({
   flat: { flex: 1, backgroundColor: c.surface },
   empty: { flex: 1, alignItems: 'center', justifyContent: 'center', padding: spacing.md },
   emptyText: { ...type.small, color: c.textMuted },
-  dot: {
-    width: 14,
-    height: 14,
-    borderRadius: 7,
-    borderWidth: 2,
-    borderColor: c.mapRoad,
-  },
-  ring: {
-    width: 14,
-    height: 14,
-    borderRadius: 7,
-    borderWidth: 3,
-    backgroundColor: c.mapRoad,
-  },
   highlight: {
     width: 16,
     height: 16,

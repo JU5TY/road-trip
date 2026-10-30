@@ -1,7 +1,8 @@
 import { Platform, StyleSheet, View } from 'react-native';
-import MapView, { Polyline } from 'react-native-maps';
+import MapView, { Marker, Polyline } from 'react-native-maps';
 
 import { useStyles, useTheme } from '../hooks/useTheme';
+import MapDot from './MapDot';
 
 /** Region that fits all coordinates with some padding (no imperative fitting needed). */
 function regionFor(coordinates) {
@@ -24,10 +25,11 @@ function regionFor(coordinates) {
  * Maps lite mode (a static image), which is cheaper when several previews are on
  * screen; iOS has no lite mode. Taps pass through to the parent. Pass `active={false}` to swap the map for a placeholder (e.g. when its
  * screen is in the background) so no native map is kept alive off-screen.
+ * A green dot marks the start and a red one the finish, as on the trip maps.
  * segments: [{ key, coordinates, color, dotted? }] (dotted: a ferry or tunnel)
  */
 export default function RoutePreview({ segments, height = 160, active = true }) {
-  const { scheme } = useTheme();
+  const { c, scheme } = useTheme();
   const styles = useStyles(makeStyles);
   const all = segments.flatMap((s) => s.coordinates);
   const box = { height, overflow: 'hidden' };
@@ -55,6 +57,19 @@ export default function RoutePreview({ segments, height = 160, active = true }) 
             strokeWidth={4}
             {...(s.dotted ? { lineDashPattern: [1, 8], lineCap: 'round' } : null)}
           />
+        ))}
+        {[
+          ['start', all[0], c.start],
+          ['finish', all.at(-1), c.finish],
+        ].map(([kind, coordinate, color]) => (
+          <Marker
+            key={kind}
+            coordinate={coordinate}
+            anchor={{ x: 0.5, y: 0.5 }}
+            tracksViewChanges={false}
+          >
+            <MapDot kind={kind} color={color} />
+          </Marker>
         ))}
       </MapView>
     </View>

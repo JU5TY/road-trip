@@ -25,19 +25,12 @@ function regionFor(coordinates) {
  * screen; iOS has no lite mode. Taps pass through to the parent. Pass `active={false}` to swap the map for a placeholder (e.g. when its
  * screen is in the background) so no native map is kept alive off-screen.
  * segments: [{ key, coordinates, color }]
- * `width` (optional) makes a fixed-size thumbnail; `rounded` clips the corners.
  */
-export default function RoutePreview({
-  segments,
-  height = 160,
-  width,
-  rounded = 0,
-  active = true,
-}) {
+export default function RoutePreview({ segments, height = 160, active = true }) {
   const { scheme } = useTheme();
   const styles = useStyles(makeStyles);
   const all = segments.flatMap((s) => s.coordinates);
-  const box = { height, width, borderRadius: rounded, overflow: 'hidden' };
+  const box = { height, overflow: 'hidden' };
   if (!active || all.length === 0) return <View style={[styles.placeholder, box]} />;
 
   return (

@@ -75,7 +75,7 @@ export default function RoadsScreen() {
         onPress={() => router.back()}
         style={styles.back}
       />
-      <View style={styles.band}>
+      <View style={styles.collection}>
         <Text style={[type.headline, styles.h1]} role="heading">
           Iconic Roads
         </Text>
@@ -142,14 +142,7 @@ const makeStyles = (c) => ({
   screen: { flex: 1, backgroundColor: c.background },
   content: { paddingHorizontal: spacing.md },
   back: { alignSelf: 'flex-start', marginLeft: -12 },
-  band: {
-    marginHorizontal: -spacing.md,
-    paddingHorizontal: spacing.md,
-    paddingTop: 4,
-    paddingBottom: 24,
-    alignItems: 'center',
-    backgroundColor: c.card,
-  },
+  collection: { paddingTop: 4, paddingBottom: 8, alignItems: 'center' },
   h1: { alignSelf: 'stretch', color: c.text, marginHorizontal: 4, marginBottom: 12 },
   text: { color: c.text },
   summary: { marginTop: 14 },

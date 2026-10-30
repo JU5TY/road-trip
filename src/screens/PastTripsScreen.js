@@ -1,4 +1,4 @@
-import { router, useFocusEffect, useIsFocused } from 'expo-router';
+import { router, useFocusEffect } from 'expo-router';
 import { useCallback, useMemo, useState } from 'react';
 import { Alert, FlatList, Text, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
@@ -53,7 +53,7 @@ function summaryLine(trips, units) {
   return `${prefix}${count} · ${distance.value} ${distance.unit}`;
 }
 
-/** No trips yet: a short explainer and a Start a trip button. */
+/** No trips yet: a short explainer and a Record a drive button. */
 function EmptyTrips() {
   const { c } = useTheme();
   const styles = useStyles(makeStyles);
@@ -71,9 +71,9 @@ function EmptyTrips() {
         size="small"
         icon="radio_button_checked"
         iconFilled
-        label="Start a trip"
+        label="Record a drive"
         style={styles.emptyButton}
-        onPress={() => router.navigate({ pathname: '/record', params: { start: 'new' } })}
+        onPress={() => router.navigate('/record')}
       />
     </View>
   );
@@ -84,8 +84,6 @@ export default function PastTripsScreen() {
   const roadCounts = useRoadCounts();
   const styles = useStyles(makeStyles);
   const insets = useSafeAreaInsets();
-  // Only keep the map thumbnails alive while Trips is showing.
-  const focused = useIsFocused();
   const [trips, setTrips] = useState(null);
 
   const load = useCallback(() => {
@@ -167,7 +165,6 @@ export default function PastTripsScreen() {
           <TripCard
             trip={item.trip}
             units={units}
-            showMap={focused}
             roadCount={showIconicRoads ? (roadCounts.get(item.trip.id) ?? 0) : 0}
             onLongPress={() => confirmDelete(item.trip)}
           />

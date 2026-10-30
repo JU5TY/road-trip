@@ -2,7 +2,6 @@ import { useState } from 'react';
 import {
   KeyboardAvoidingView,
   Modal,
-  Platform,
   Pressable,
   Text,
   TextInput,
@@ -63,10 +62,8 @@ export default function EditTripSheet({ visible, trip, placeholder, onSave, onCl
   const styles = useStyles(makeStyles);
   return (
     <Modal visible={visible} transparent animationType="slide" onRequestClose={onClose}>
-      <KeyboardAvoidingView
-        style={styles.backdrop}
-        behavior={Platform.OS === 'ios' ? 'padding' : undefined}
-      >
+      {/* Padding on Android too: edge-to-edge windows don't resize for the keyboard. */}
+      <KeyboardAvoidingView style={styles.backdrop} behavior="padding">
         {visible ? (
           <EditTripForm trip={trip} placeholder={placeholder} onSave={onSave} onClose={onClose} />
         ) : null}

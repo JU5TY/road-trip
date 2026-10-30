@@ -136,7 +136,7 @@ export default function HomeScreen() {
           <View style={styles.emptyText}>
             <Text style={[type.bodyStrong, styles.text]}>Your first trip will show here</Text>
             <Text style={[type.body, styles.mutedSmall]}>
-              Tap Start a trip when you set off. It keeps recording with the screen off.
+              Tap Record a drive when you set off. It keeps recording with the screen off.
             </Text>
           </View>
         </View>

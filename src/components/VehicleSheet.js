@@ -3,7 +3,6 @@ import {
   Alert,
   KeyboardAvoidingView,
   Modal,
-  Platform,
   Pressable,
   Text,
   TextInput,
@@ -65,10 +64,8 @@ export default function VehicleSheet({ visible, vehicle, onSave, onDelete, onClo
   const styles = useStyles(makeStyles);
   return (
     <Modal visible={visible} transparent animationType="slide" onRequestClose={onClose}>
-      <KeyboardAvoidingView
-        style={styles.backdrop}
-        behavior={Platform.OS === 'ios' ? 'padding' : undefined}
-      >
+      {/* Padding on Android too: edge-to-edge windows don't resize for the keyboard. */}
+      <KeyboardAvoidingView style={styles.backdrop} behavior="padding">
         {visible ? (
           <VehicleForm vehicle={vehicle} onSave={onSave} onDelete={onDelete} onClose={onClose} />
         ) : null}

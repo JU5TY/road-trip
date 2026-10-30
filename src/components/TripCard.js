@@ -7,13 +7,14 @@ import { radius, type } from '../theme';
 import { formatDate, formatDistance, formatDurationShort, tripKicker } from '../utils/format';
 import { groupIntoDays, summarizeDrives, tripTitle } from '../utils/tripSummary';
 import RoutePreview from './RoutePreview';
+import RouteThumb from './RouteThumb';
 import Icon from './ui/Icon';
 
 /**
  * Trip card: route map, green date line, name, "780 km · 11h 55m". Tapping it
  * opens the trip. variant 'large' (map on top, Home's Latest trip) or 'row'
- * (round 56px map on the right, Trips list). `showMap={false}` swaps the map for
- * a placeholder while the screen is in the background. `roadCount` adds an
+ * (round 56px route outline on the right, Trips list). `showMap={false}` swaps
+ * the large card's map for a placeholder while the screen is in the background. `roadCount` adds an
  * Iconic Roads chip. Drives whose times are hidden are left out of the time.
  */
 export default function TripCard({
@@ -85,15 +86,7 @@ export default function TripCard({
           </View>
         ) : null}
       </View>
-      {large ? null : (
-        <RoutePreview
-          segments={segments ?? []}
-          height={56}
-          width={56}
-          rounded={28}
-          active={showMap}
-        />
-      )}
+      {large ? null : <RouteThumb segments={segments ?? []} />}
     </Pressable>
   );
 }

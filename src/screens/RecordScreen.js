@@ -1,6 +1,6 @@
 import { useKeepAwake } from 'expo-keep-awake';
 import * as Location from 'expo-location';
-import { router, useFocusEffect, useIsFocused, useLocalSearchParams } from 'expo-router';
+import { router, useFocusEffect, useIsFocused } from 'expo-router';
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { ActivityIndicator, Alert, Linking, Pressable, StyleSheet, Text, View } from 'react-native';
 import MapView, { Polyline } from 'react-native-maps';
@@ -129,7 +129,6 @@ function TripOption({ icon, title, subtitle, selected, onPress }) {
 }
 
 export default function RecordScreen() {
-  const { continueTripId, start } = useLocalSearchParams();
   const { units, breakReminderMinutes } = useSettings();
   const { c } = useTheme();
   const styles = useStyles(makeStyles);
@@ -265,19 +264,6 @@ export default function RecordScreen() {
       setMapHidden(false);
       if (driveId) router.push(`/saved/${driveId}`);
     });
-
-  // Home's "Start a trip" / "Continue …" land here with what to record.
-  useEffect(() => {
-    if (!continueTripId && !start) return;
-    router.setParams({ continueTripId: undefined, start: undefined });
-    getActiveDrive()
-      .then((active) => {
-        if (!active) startRecording(continueTripId ? Number(continueTripId) : null);
-      })
-      .catch((err) => console.warn('[record] start failed', err));
-    // startRecording is recreated each render; only the params matter here.
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [continueTripId, start]);
 
   const onSheetPrimary = async () => {
     const kind = sheet;

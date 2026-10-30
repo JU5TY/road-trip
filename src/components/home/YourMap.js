@@ -4,9 +4,10 @@ import Svg, { Circle, Polyline } from 'react-native-svg';
 
 import { useStyles, useTheme } from '../../hooks/useTheme';
 import { getDriveRoutePreview } from '../../storage/driveStorage';
+import { fitInCircle } from '../../utils/routeOutline';
 
-const SIZE = 260; // outer ring
-const INNER = 236; // drawn map
+const SIZE = 184; // outer ring
+const INNER = 166; // drawn map
 const POINTS_PER_DRIVE = 80;
 
 /** Every drive's route, thinned. Reloads when the set of drives changes. */
@@ -38,34 +39,9 @@ export default function YourMap({ drives }) {
   const routes = useAllRoutes(drives);
 
   const lines = useMemo(() => {
-    const all = routes.flat();
-    if (all.length < 2) return null;
-    const lats = all.map((p) => p.latitude);
-    const lngs = all.map((p) => p.longitude);
-    const midLat = (Math.min(...lats) + Math.max(...lats)) / 2;
-    const k = Math.cos((midLat * Math.PI) / 180); // keep shapes true east-west
-    const minX = Math.min(...lngs) * k;
-    const maxX = Math.max(...lngs) * k;
-    const minY = Math.min(...lats);
-    const maxY = Math.max(...lats);
-    // Fit the routes inside the circle (a square inscribed in it, plus a margin).
-    const box = (INNER / Math.SQRT2) * 0.92;
-    const scale = box / Math.max(maxX - minX, maxY - minY, 1e-6);
-    const cx = INNER / 2 - ((minX + maxX) / 2) * scale;
-    const cy = INNER / 2 + ((minY + maxY) / 2) * scale;
-    const project = (p) => [cx + p.longitude * k * scale, cy - p.latitude * scale];
-    return {
-      polylines: routes.map((r) =>
-        r
-          .map((p) =>
-            project(p)
-              .map((n) => n.toFixed(1))
-              .join(',')
-          )
-          .join(' ')
-      ),
-      home: project(routes.at(-1)[0]),
-    };
+    const fit = fitInCircle(routes, INNER);
+    if (!fit) return null;
+    return { polylines: routes.map(fit.points), home: fit.project(routes.at(-1)[0]) };
   }, [routes]);
 
   return (

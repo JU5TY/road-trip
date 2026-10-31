@@ -472,7 +472,6 @@ export default function TripScreen() {
       <HeroStats
         stats={selected ? selected.stats : { ...summary, movingTimeMs: timeSummary.movingTimeMs }}
         units={units}
-        avgSpeedMps={averageMovingSpeed(selected ? selected.stats : timeSummary)}
         timesHidden={hideTimes}
         roadCount={new Set(viewRoads.map((r) => r.roadId)).size}
         countryCount={viewCountries.length}

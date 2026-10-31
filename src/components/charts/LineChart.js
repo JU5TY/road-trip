@@ -39,7 +39,6 @@ function runsOf(data) {
  * formatX / formatY: value → label
  * yFromZero: start the y axis at 0 (speed); otherwise fit to the data
  * minYRange: smallest y span, so flat data doesn't look jagged
- * onScrub(datum | null): called while a finger drags across the chart
  */
 export default function LineChart({
   series,
@@ -51,7 +50,6 @@ export default function LineChart({
   strokeWidth = 3,
   yFromZero = false,
   minYRange = 1,
-  onScrub,
 }) {
   const { c } = useTheme();
   const styles = useStyles(makeStyles);
@@ -100,11 +98,9 @@ export default function LineChart({
         best = { datum: d, color: one.color };
     }
     setActive(best);
-    onScrub?.(best?.datum ?? null);
   };
   const endInspect = () => {
     setActive(null);
-    onScrub?.(null);
   };
   const responder = {
     onStartShouldSetResponder: () => true,

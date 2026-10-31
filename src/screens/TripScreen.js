@@ -72,7 +72,6 @@ export default function TripScreen() {
   } = usePhotos(trip?.drives.map((d) => [d.startedAt, d.endedAt])); // not the time between drives
   const scrollRef = useRef(null);
   const mapRef = useRef(null);
-  const [highlight, setHighlight] = useState(null); // point under the finger on a chart
 
   const setDrivePlaces = (driveId, places) =>
     setTrip((prev) => ({
@@ -319,7 +318,6 @@ export default function TripScreen() {
     <RouteMap
       ref={mapRef}
       flat
-      highlight={highlight}
       segments={segments}
       fitTo={fitTo}
       markers={routeMarkers(
@@ -522,7 +520,6 @@ export default function TripScreen() {
         }
         units={units}
         avgSpeedMps={averageMovingSpeed(selected ? selected.stats : timeSummary)}
-        onScrub={setHighlight}
         speedHidden={selected ? hideTimes : hiddenCount > 0}
         markers={
           selected

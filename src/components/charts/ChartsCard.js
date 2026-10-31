@@ -29,7 +29,6 @@ export default function ChartsCard({
   tracks,
   units,
   avgSpeedMps,
-  onScrub,
   speedHidden = false,
   markers = [],
 }) {
@@ -78,7 +77,6 @@ export default function ChartsCard({
   const showing = speedHidden ? 'elevation' : hasElevation ? choice : 'speed';
 
   const select = (next) => {
-    onScrub?.(null);
     setChoice(next);
   };
   const formatX = (m) => `${Math.round(toDistance(m, units))} ${distanceUnit(units)}`;
@@ -118,7 +116,6 @@ export default function ChartsCard({
             formatX={formatX}
             formatY={(m) => formatElevation(m, units)}
             markers={marks}
-            onScrub={onScrub}
           />
         ) : (
           <LineChart
@@ -132,7 +129,6 @@ export default function ChartsCard({
             }
             formatX={formatX}
             formatY={formatSpeed}
-            onScrub={onScrub}
           />
         )}
       </View>

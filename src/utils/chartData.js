@@ -1,7 +1,6 @@
 // Chart series derived from a drive's GPS points ({ latitude, longitude,
 // altitude, speed, timestamp }, oldest first). Pure functions: raw fixes are
 // noisy, so values are smoothed and thinned to a few hundred chart points.
-// Every datum keeps its coordinates so a chart can highlight it on the map.
 // Points from utils/crossings.js withoutCrossings() have the ferry or tunnel
 // left out; no distance is counted across one.
 import { haversineDistance } from './geoMath';
@@ -33,13 +32,7 @@ function thin(data, max) {
   return data.filter((d, i) => d.keep || i % step === 0 || i === data.length - 1);
 }
 
-const toDatum = (p, x, y, extra = {}) => ({
-  x,
-  y,
-  latitude: p.latitude,
-  longitude: p.longitude,
-  ...extra,
-});
+const toDatum = (x, y, extra = {}) => ({ x, y, ...extra });
 
 /**
  * Elevation against distance: [{ x: metres from start (+ offsetM), y: altitude m }].
@@ -50,8 +43,7 @@ export function elevationSeries(points, { offsetM = 0, maxPoints = 200 } = {}) {
   let distance = offsetM;
   points.forEach((p, i) => {
     if (i > 0) distance += stepDistance(points[i - 1], p);
-    if (p.altitude !== null && p.altitude !== undefined)
-      data.push(toDatum(p, distance, p.altitude));
+    if (p.altitude !== null && p.altitude !== undefined) data.push(toDatum(distance, p.altitude));
   });
   // GPS altitude jumps by several metres between fixes; average it out.
   return thin(smooth(data, 9), maxPoints);
@@ -85,7 +77,7 @@ export function speedByDistanceSeries(points, { offsetM = 0, maxPoints = 240 } =
         run = [];
       }
     }
-    run.push(toDatum(p, distance, Math.min(speedAt(points, i), MAX_PLAUSIBLE_SPEED_MPS)));
+    run.push(toDatum(distance, Math.min(speedAt(points, i), MAX_PLAUSIBLE_SPEED_MPS)));
   });
   if (run.length > 0) runs.push(run);
   // ~10 s average within each run, so a stop doesn't blur the speeds around it.

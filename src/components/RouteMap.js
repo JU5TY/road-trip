@@ -1,6 +1,6 @@
 import { useEffect, useImperativeHandle, useRef } from 'react';
 import { StyleSheet, Text, View } from 'react-native';
-import MapView, { Marker, Polyline } from 'react-native-maps';
+import MapView, { Polyline } from 'react-native-maps';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { useStyles, useTheme } from '../hooks/useTheme';
@@ -20,8 +20,6 @@ const DOTS = { lineDashPattern: [1, 10], lineCap: 'round' };
  * markers:  [{ key, kind: 'start' | 'finish' | 'stop', coordinate, title, description?, color }]
  *           start and finish are filled dots, a rest stop a ring in its route
  *           colour (the same marks as the Trips list outline and the Timeline)
- * highlight: optional { latitude, longitude } shown as a dot (e.g. while
- *            dragging across a chart).
  * `ref` exposes focusMarker(key): zoom to that marker and open its callout.
  * `fitTo` (coordinates) frames part of the map, e.g. one drive of a trip; the
  * map moves to it whenever a new array is passed.
@@ -32,7 +30,6 @@ export default function RouteMap({
   markers = [],
   height = 320,
   flat = false,
-  highlight,
   fitTo,
   ref,
 }) {
@@ -115,15 +112,6 @@ export default function RouteMap({
               <MapDot kind={m.kind} color={m.color} />
             </DotMarker>
           ))}
-          {highlight ? (
-            <Marker
-              key="highlight"
-              coordinate={{ latitude: highlight.latitude, longitude: highlight.longitude }}
-              anchor={{ x: 0.5, y: 0.5 }}
-            >
-              <View style={styles.highlight} />
-            </Marker>
-          ) : null}
         </MapView>
       ) : (
         <View style={styles.empty}>
@@ -139,12 +127,4 @@ const makeStyles = (c) => ({
   flat: { flex: 1, backgroundColor: c.surface },
   empty: { flex: 1, alignItems: 'center', justifyContent: 'center', padding: spacing.md },
   emptyText: { ...type.small, color: c.textMuted },
-  highlight: {
-    width: 16,
-    height: 16,
-    borderRadius: 8,
-    backgroundColor: c.accent,
-    borderWidth: 3,
-    borderColor: c.background,
-  },
 });

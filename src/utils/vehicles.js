@@ -13,6 +13,10 @@ export function vehicleLabel(vehicle) {
   return vehicle.nickname || [vehicle.make, vehicle.model].filter(Boolean).join(' ');
 }
 
+/** Whether another of `vehicles` has the same make and model as `vehicle`. */
+export const hasTwin = (vehicle, vehicles) =>
+  vehicles.some((o) => o !== vehicle && same(o.make, vehicle.make) && same(o.model, vehicle.model));
+
 /**
  * Why `fields` ({ make, model, registration }) can't be saved alongside
  * `others` (the Garage's other vehicles), or null. A registration is needed

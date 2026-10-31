@@ -23,6 +23,7 @@ import { comingSoon } from '../utils/comingSoon';
 import { distanceParts, formatBreakReminder } from '../utils/format';
 import { COUNTRIES_ATTRIBUTION } from '../utils/countries';
 import { ICONIC_ROADS, ROADS_ATTRIBUTION } from '../utils/iconicRoads';
+import { hasTwin } from '../utils/vehicles';
 
 const UNIT_LABELS = { metric: 'Kilometres', imperial: 'Miles' };
 const THEMES = [
@@ -69,11 +70,18 @@ function PremiumTag() {
   );
 }
 
-/** "Default · 1,020 mi · 6 trips" */
-function vehicleSubtitle(v, units) {
+/**
+ * "Default · 1,020 mi · 6 trips", led by the registration ("AB12 CDE · …")
+ * when another vehicle has the same make and model, to tell them apart.
+ */
+function vehicleSubtitle(v, vehicles, units) {
   const d = distanceParts(v.distanceM, units);
-  const parts = [`${d.value} ${d.unit}`, `${v.tripCount} ${v.tripCount === 1 ? 'trip' : 'trips'}`];
-  return (v.isDefault ? ['Default', ...parts] : parts).join(' · ');
+  return [
+    ...(v.registration && hasTwin(v, vehicles) ? [v.registration] : []),
+    ...(v.isDefault ? ['Default'] : []),
+    `${d.value} ${d.unit}`,
+    `${v.tripCount} ${v.tripCount === 1 ? 'trip' : 'trips'}`,
+  ].join(' · ');
 }
 
 /** The "You" tab: preferences and about. Every setting is the same row style. */
@@ -167,7 +175,7 @@ export default function SettingsScreen() {
           }
           // Just make and model here; the nickname and registration show on drives.
           title={`${v.make} ${v.model}`.trim()}
-          subtitle={vehicleSubtitle(v, units)}
+          subtitle={vehicleSubtitle(v, vehicles, units)}
           onPress={() => setEditing(v)}
           style={styles.vehicleRow}
           divider

@@ -15,7 +15,7 @@ import { useRoadCounts } from '../hooks/useRoadCounts';
 import { useRoadTotals } from '../hooks/useRoadTotals';
 import { useStyles, useTheme } from '../hooks/useTheme';
 import { listTrips } from '../storage/tripStorage';
-import { radius, spacing, type } from '../theme';
+import { bottomSpace, radius, spacing, type } from '../theme';
 import { distanceParts } from '../utils/format';
 import { ICONIC_ROADS } from '../utils/iconicRoads';
 import { computeTotals, firstDriveMonth } from '../utils/tripSummary';
@@ -144,7 +144,7 @@ const makeStyles = (c) => ({
   screen: { flex: 1, backgroundColor: c.background },
   center: { alignItems: 'center', justifyContent: 'center' },
   // Bottom padding clears the floating Record pill above the nav bar.
-  content: { paddingHorizontal: spacing.md, paddingBottom: 112 },
+  content: { paddingHorizontal: spacing.md, paddingBottom: bottomSpace.recordPill },
   band: {
     marginHorizontal: -spacing.md,
     paddingHorizontal: spacing.md,

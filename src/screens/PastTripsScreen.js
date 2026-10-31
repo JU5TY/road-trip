@@ -13,7 +13,7 @@ import { useRoadCounts } from '../hooks/useRoadCounts';
 import { useStyles, useTheme } from '../hooks/useTheme';
 import { ensureDrivePlaces } from '../services/placeService';
 import { listTrips } from '../storage/tripStorage';
-import { radius, spacing, type } from '../theme';
+import { bottomSpace, radius, spacing, type } from '../theme';
 import { distanceParts } from '../utils/format';
 import { computeTotals } from '../utils/tripSummary';
 
@@ -157,7 +157,7 @@ export default function PastTripsScreen() {
 
 const makeStyles = (c) => ({
   screen: { flex: 1, backgroundColor: c.background },
-  content: { paddingHorizontal: spacing.md, paddingBottom: spacing.xl },
+  content: { paddingHorizontal: spacing.md, paddingBottom: bottomSpace.recordPill },
   h1: { color: c.text, marginHorizontal: 4, marginTop: 8, height: 56, textAlignVertical: 'center' },
   summary: { marginHorizontal: 4, marginTop: 2 },
   recording: { marginTop: 20 },

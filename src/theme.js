@@ -201,3 +201,19 @@ export const type = {
 export const spacing = { xs: 4, sm: 8, md: 16, lg: 24, xl: 32 };
 
 export const radius = { sm: 6, md: 12, lg: 12, card: 12, pill: 999 };
+
+/**
+ * Buttons that float over the bottom of a scrolling page, and the room the
+ * page leaves under its last item so they never cover it: how high the button
+ * sits, its height, and a 16 gap. The Record pill floats over Home and Trips
+ * (above the nav), the toolbar over the Trip and road pages (above the
+ * phone's bottom inset, which those pages add).
+ */
+export const floating = {
+  recordPill: { lift: 16, height: 56 },
+  toolbar: { lift: 28, height: 64 },
+};
+export const bottomSpace = {
+  recordPill: floating.recordPill.lift + floating.recordPill.height + 16,
+  toolbar: floating.toolbar.lift + floating.toolbar.height + 16,
+};

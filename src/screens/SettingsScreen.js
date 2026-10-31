@@ -311,7 +311,7 @@ export default function SettingsScreen() {
 
 const makeStyles = (c) => ({
   screen: { flex: 1, backgroundColor: c.background },
-  content: { paddingHorizontal: spacing.md, paddingBottom: 112 },
+  content: { paddingHorizontal: spacing.md, paddingBottom: spacing.xl },
   h1: { color: c.text, marginHorizontal: 4, marginTop: 8, height: 56, textAlignVertical: 'center' },
   note: { color: c.textMuted, marginHorizontal: 4, marginTop: 4 },
   well: {

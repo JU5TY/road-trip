@@ -4,7 +4,7 @@ import { Animated, Pressable, Text, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { useStyles, useTheme } from '../../hooks/useTheme';
-import { spacing, type } from '../../theme';
+import { bottomSpace, floating, spacing, type } from '../../theme';
 import Icon from '../ui/Icon';
 import IconButton from '../ui/IconButton';
 
@@ -54,7 +54,9 @@ export default function DetailLayout({
         >
           {map}
         </Animated.View>
-        <View style={[styles.content, { paddingBottom: 120 + insets.bottom }]}>{children}</View>
+        <View style={[styles.content, { paddingBottom: bottomSpace.toolbar + insets.bottom }]}>
+          {children}
+        </View>
       </Animated.ScrollView>
       <IconButton
         icon="arrow_back"
@@ -63,7 +65,9 @@ export default function DetailLayout({
         onPress={() => router.back()}
         style={[styles.back, { top: insets.top + 12 }]}
       />
-      {actions.length > 0 ? <Toolbar actions={actions} bottom={insets.bottom + 28} /> : null}
+      {actions.length > 0 ? (
+        <Toolbar actions={actions} bottom={insets.bottom + floating.toolbar.lift} />
+      ) : null}
     </View>
   );
 }

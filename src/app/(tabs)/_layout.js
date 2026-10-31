@@ -5,7 +5,7 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import Icon from '../../components/ui/Icon';
 import { useActiveDrive } from '../../hooks/useActiveDrive';
 import { useStyles, useTheme } from '../../hooks/useTheme';
-import { type } from '../../theme';
+import { floating, type } from '../../theme';
 
 const ICONS = { index: 'home', trips: 'route', settings: 'person' };
 const NAV_HEIGHT = 64;
@@ -76,7 +76,7 @@ function RecordPill() {
       style={({ pressed }) => [
         styles.pill,
         !label && styles.pillRound,
-        { bottom: NAV_HEIGHT + insets.bottom + 16 },
+        { bottom: NAV_HEIGHT + insets.bottom + floating.recordPill.lift },
         pressed && styles.pressed,
       ]}
     >
@@ -113,8 +113,8 @@ const makeStyles = (c) => ({
   pill: {
     position: 'absolute',
     right: 16,
-    height: 56,
-    borderRadius: 28,
+    height: floating.recordPill.height,
+    borderRadius: floating.recordPill.height / 2,
     flexDirection: 'row',
     alignItems: 'center',
     gap: 10,

@@ -12,7 +12,7 @@ import { useSettings } from '../context/SettingsContext';
 import { useStyles, useTheme } from '../hooks/useTheme';
 import { getRoadCompletions } from '../storage/roadStorage';
 import { getTrip } from '../storage/tripStorage';
-import { type } from '../theme';
+import { radius, type } from '../theme';
 import { distanceParts, elevationParts, formatLongDate, formatShortDate } from '../utils/format';
 import { comingSoon } from '../utils/comingSoon';
 import { bendsLabel, completedLabel, getRoad } from '../utils/iconicRoads';
@@ -140,14 +140,15 @@ export default function RoadScreen() {
   // Third stat: corners (the Ring), else steepest, else climb. Details then show
   // what didn't fit: steepest when corners took its place, otherwise how twisty.
   const steepest = road.steepestPct ? `${road.steepestPct}%` : null;
+  // [icon, value, unit, label]
   const third = road.corners
-    ? [String(road.corners), 'corners']
+    ? ['turn_sharp_right', String(road.corners), null, 'Corners']
     : steepest
-      ? [steepest, 'steepest']
-      : [`${climb.value} ${climb.unit}`, 'climb'];
+      ? ['show_chart', String(road.steepestPct), '%', 'Steepest']
+      : ['trending_up', climb.value, climb.unit, 'Climb'];
   const stats = [
-    [`${length.value} ${length.unit}`, 'length'],
-    [`${highest.value} ${highest.unit}`, 'highest'],
+    ['straighten', length.value, length.unit, 'Length'],
+    ['landscape', highest.value, highest.unit, 'Highest'],
     third,
   ];
   const details = [
@@ -198,17 +199,18 @@ export default function RoadScreen() {
         </View>
       )}
 
+      {/* One card, a column per stat: icon, number (unit in grey), label. */}
       <View style={styles.stats}>
-        {stats.map(([value, label]) => (
-          <View key={label} style={styles.stat}>
-            <Text
-              style={[type.stat, styles.statValue, styles.centre]}
-              numberOfLines={1}
-              adjustsFontSizeToFit
-            >
-              {value}
+        {stats.map(([icon, value, unit, label], i) => (
+          <View key={label} style={[styles.stat, i > 0 && styles.statDivider]}>
+            <Icon name={icon} size={22} color={c.textMuted} />
+            <Text style={[styles.centre, styles.statNumber]} numberOfLines={1} adjustsFontSizeToFit>
+              <Text style={[type.stat, styles.statValue]}>{value}</Text>
+              {unit ? (
+                <Text style={[type.body, styles.muted]}>{unit === '%' ? unit : ` ${unit}`}</Text>
+              ) : null}
             </Text>
-            <Text style={[type.label, styles.muted, styles.regular, styles.centre]}>{label}</Text>
+            <Text style={[type.small, styles.muted, styles.centre]}>{label}</Text>
           </View>
         ))}
       </View>
@@ -305,11 +307,22 @@ const makeStyles = (c) => ({
     alignItems: 'center',
     justifyContent: 'center',
   },
-  stats: { flexDirection: 'row', marginTop: 22 },
-  stat: { flex: 1, minWidth: 0, alignItems: 'center' },
+  stats: {
+    flexDirection: 'row',
+    marginTop: 20,
+    paddingTop: 16,
+    paddingBottom: 14,
+    borderRadius: radius.card,
+    backgroundColor: c.card,
+    ...c.cardShadow,
+  },
+  stat: { flex: 1, minWidth: 0, alignItems: 'center', gap: 2, paddingHorizontal: 8 },
+  statDivider: { borderLeftWidth: 1, borderLeftColor: c.divider },
   centre: { textAlign: 'center' },
-  statValue: { color: c.accent },
-  buttons: { flexDirection: 'row', gap: 10, marginTop: 22 },
+  statNumber: { marginTop: 4 },
+  // A notch below type.stat, so three fit beside each other.
+  statValue: { color: c.accent, fontSize: 24, lineHeight: 30 },
+  buttons: { flexDirection: 'row', gap: 10, marginTop: 16 },
   navigate: {
     flex: 1,
     height: 56,

@@ -8,11 +8,12 @@ import RouteMap from '../components/RouteMap';
 import Icon from '../components/ui/Icon';
 import ListRow from '../components/ui/ListRow';
 import SectionHeader from '../components/ui/SectionHeader';
+import StatRow from '../components/ui/StatRow';
 import { useSettings } from '../context/SettingsContext';
 import { useStyles, useTheme } from '../hooks/useTheme';
 import { getRoadCompletions } from '../storage/roadStorage';
 import { getTrip } from '../storage/tripStorage';
-import { radius, type } from '../theme';
+import { type } from '../theme';
 import { distanceParts, elevationParts, formatLongDate, formatShortDate } from '../utils/format';
 import { comingSoon } from '../utils/comingSoon';
 import { bendsLabel, completedLabel, getRoad } from '../utils/iconicRoads';
@@ -199,21 +200,10 @@ export default function RoadScreen() {
         </View>
       )}
 
-      {/* One card, a column per stat: icon, number (unit in grey), label. */}
-      <View style={styles.stats}>
-        {stats.map(([icon, value, unit, label], i) => (
-          <View key={label} style={[styles.stat, i > 0 && styles.statDivider]}>
-            <Icon name={icon} size={22} color={c.textMuted} />
-            <Text style={[styles.centre, styles.statNumber]} numberOfLines={1} adjustsFontSizeToFit>
-              <Text style={[type.stat, styles.statValue]}>{value}</Text>
-              {unit ? (
-                <Text style={[type.body, styles.muted]}>{unit === '%' ? unit : ` ${unit}`}</Text>
-              ) : null}
-            </Text>
-            <Text style={[type.small, styles.muted, styles.centre]}>{label}</Text>
-          </View>
-        ))}
-      </View>
+      <StatRow
+        style={styles.stats}
+        stats={stats.map(([icon, value, unit, label]) => ({ icon, value, unit, label }))}
+      />
 
       <View style={styles.buttons}>
         <Pressable
@@ -307,21 +297,7 @@ const makeStyles = (c) => ({
     alignItems: 'center',
     justifyContent: 'center',
   },
-  stats: {
-    flexDirection: 'row',
-    marginTop: 20,
-    paddingTop: 16,
-    paddingBottom: 14,
-    borderRadius: radius.card,
-    backgroundColor: c.card,
-    ...c.cardShadow,
-  },
-  stat: { flex: 1, minWidth: 0, alignItems: 'center', gap: 2, paddingHorizontal: 8 },
-  statDivider: { borderLeftWidth: 1, borderLeftColor: c.divider },
-  centre: { textAlign: 'center' },
-  statNumber: { marginTop: 4 },
-  // A notch below type.stat, so three fit beside each other.
-  statValue: { color: c.accent, fontSize: 24, lineHeight: 30 },
+  stats: { marginTop: 20 },
   buttons: { flexDirection: 'row', gap: 10, marginTop: 16 },
   navigate: {
     flex: 1,

@@ -418,12 +418,11 @@ export default function TripScreen() {
       />
 
       <TitleBlock
-        // "TRIP ·" first: this page is the trip, whichever drive is picked.
-        kicker={`TRIP · ${
+        kicker={
           allHidden && days.length === 1
             ? formatDayDate(first.startedAt).toUpperCase()
             : tripKicker(first.startedAt, last.endedAt, days.length, { withYear: true })
-        }`}
+        }
         title={title}
         subtitle={subtitle}
         notes={trip.notes}

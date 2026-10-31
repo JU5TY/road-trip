@@ -8,6 +8,7 @@ import RouteMap from '../components/RouteMap';
 import Button from '../components/ui/Button';
 import Icon from '../components/ui/Icon';
 import IconButton from '../components/ui/IconButton';
+import StatRow from '../components/ui/StatRow';
 import { useSettings } from '../context/SettingsContext';
 import { useStyles, useTheme } from '../hooks/useTheme';
 import { ensureDrivePlaces } from '../services/placeService';
@@ -16,7 +17,7 @@ import { getDriveCompletions, getRoadTotals } from '../storage/roadStorage';
 import { getTrip } from '../storage/tripStorage';
 import { dayColorFor, spacing, type } from '../theme';
 import { driveGaps, routeSegments } from '../utils/crossings';
-import { distanceParts, formatDate, formatDurationShort } from '../utils/format';
+import { distanceParts, elevationParts, formatDate, formatDurationShort } from '../utils/format';
 import { comingSoon } from '../utils/comingSoon';
 import { downsample } from '../utils/geoMath';
 import { ICONIC_ROADS, groupByRoad } from '../utils/iconicRoads';
@@ -81,7 +82,7 @@ function RoadBadge() {
   );
 }
 
-/** Shown after Stop: the drive just saved, with Share and Done. */
+/** Shown after Stop: the drive just saved, with Share and View. */
 export default function SavedScreen() {
   const { id } = useLocalSearchParams();
   const { units, showIconicRoads } = useSettings();
@@ -147,7 +148,15 @@ export default function SavedScreen() {
     multiDay ? `Day ${dayNumber} saved${name ? ` · ${name}` : ''}` : 'Drive saved'
   ).toUpperCase();
   const distance = distanceParts(drive.stats.distanceM, units);
-  const done = () => (router.canGoBack() ? router.back() : router.replace('/record'));
+  const highest = elevationParts(drive.stats.maxAltitudeM, units);
+  const climb = elevationParts(drive.stats.elevationGainM, units);
+  // The cross goes Home. View goes Home too, then opens the trip on top with
+  // this drive picked, so Back from the trip lands on Home, not Record.
+  const close = () => router.navigate('/');
+  const view = () => {
+    router.navigate('/');
+    router.push(`/trips/${trip.id}?drive=${drive.id}`);
+  };
 
   return (
     <View style={styles.screen}>
@@ -173,7 +182,7 @@ export default function SavedScreen() {
           icon="close"
           variant="floating"
           accessibilityLabel="Close"
-          onPress={done}
+          onPress={close}
           style={[styles.close, { top: insets.top + 12 }]}
         />
       </View>
@@ -185,20 +194,21 @@ export default function SavedScreen() {
           {routeLabel(drive.places) ?? formatDate(drive.startedAt)}
         </Text>
         <FadeUp delay={300} style={styles.stats}>
-          {[
-            [`${distance.value} ${distance.unit}`, 'distance'],
-            ...(drive.stats.timesHidden
-              ? []
-              : [[formatDurationShort(drive.stats.movingTimeMs), 'driving']]),
-            [String(drive.stats.stopCount), drive.stats.stopCount === 1 ? 'stop' : 'stops'],
-          ].map(([value, label]) => (
-            <View key={label} style={styles.stat}>
-              <Text style={[type.stat, styles.statValue]} numberOfLines={1}>
-                {value}
-              </Text>
-              <Text style={[type.label, styles.muted, styles.regular]}>{label}</Text>
-            </View>
-          ))}
+          {/* Same card as an Iconic Road's. Highest point is never hidden; when
+              times are, Climb takes Driving time's place so there are still three. */}
+          <StatRow
+            stats={[
+              { icon: 'straighten', ...distance, label: 'Distance' },
+              drive.stats.timesHidden
+                ? { icon: 'trending_up', ...climb, label: 'Climb' }
+                : {
+                    icon: 'directions_car',
+                    value: formatDurationShort(drive.stats.movingTimeMs),
+                    label: 'Driving time',
+                  },
+              { icon: 'landscape', ...highest, label: 'Highest' },
+            ]}
+          />
         </FadeUp>
         {showIconicRoads
           ? groupByRoad(roads.completions).map(({ road, count }) => {
@@ -240,7 +250,7 @@ export default function SavedScreen() {
             style={styles.flex}
             onPress={() => comingSoon('Sharing')}
           />
-          <Button label="Done" style={styles.flex} onPress={done} />
+          <Button label="View" style={styles.flex} onPress={view} />
         </View>
       </View>
     </View>
@@ -255,11 +265,8 @@ const makeStyles = (c) => ({
   body: { flex: 1, paddingHorizontal: spacing.md, paddingTop: 20 },
   kicker: { color: c.accent, marginHorizontal: 4 },
   title: { color: c.text, marginTop: 4, marginHorizontal: 4 },
-  stats: { flexDirection: 'row', marginTop: 18 },
-  stat: { flex: 1, alignItems: 'center' },
-  statValue: { color: c.accent },
+  stats: { marginTop: 18 },
   regular: { fontFamily: type.body.fontFamily, textAlign: 'center' },
-  muted: { color: c.textMuted },
   flex: { flex: 1 },
   buttons: { flexDirection: 'row', gap: 10 },
   roadCard: {

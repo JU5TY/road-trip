@@ -477,6 +477,15 @@ export default function TripScreen() {
         roadCount={new Set(viewRoads.map((r) => r.roadId)).size}
         countryCount={viewCountries.length}
       />
+      {selected ? (
+        <IconicRoadsSection
+          completions={viewRoads}
+          totals={roadTotals ?? new Map()}
+          today={new Date(selected.startedAt).toDateString() === new Date().toDateString()}
+        />
+      ) : (
+        <IconicRoadsSection completions={viewRoads} dayOf={dayOf} />
+      )}
       <Timeline
         items={selected ? driveTimeline : timeline}
         color={selected ? driveColors.get(selected.id) : c.accent}
@@ -496,15 +505,6 @@ export default function TripScreen() {
         allow={allowPhotos}
         hideTimes={selected ? hideTimes : hiddenCount > 0}
       />
-      {selected ? (
-        <IconicRoadsSection
-          completions={viewRoads}
-          totals={roadTotals ?? new Map()}
-          today={new Date(selected.startedAt).toDateString() === new Date().toDateString()}
-        />
-      ) : (
-        <IconicRoadsSection completions={viewRoads} dayOf={dayOf} />
-      )}
       <CountriesSection rows={viewCountries} units={units} scope={selected ? 'drive' : 'trip'} />
       <ChartsCard
         tracks={
@@ -533,14 +533,6 @@ export default function TripScreen() {
             : undefined
         }
       />
-      <VehicleSection
-        vehicle={viewVehicle}
-        count={selected ? 1 : usedVehicleIds.length}
-        // A drive's vehicle can change to another, or to any when none is set.
-        onChange={
-          selected && vehicles.some((v) => v !== viewVehicle) ? () => setMenu('vehicle') : null
-        }
-      />
       <DetailsRows
         // Elevations aren't times, so a trip's count every drive.
         stats={
@@ -562,6 +554,14 @@ export default function TripScreen() {
           !selected && hiddenCount > 0 && !allHidden
             ? `Times leave out ${hiddenCount === 1 ? 'a drive' : `${hiddenCount} drives`} that ${hiddenCount === 1 ? 'is' : 'are'} just an Iconic Road, for safety.`
             : null
+        }
+      />
+      <VehicleSection
+        vehicle={viewVehicle}
+        count={selected ? 1 : usedVehicleIds.length}
+        // A drive's vehicle can change to another, or to any when none is set.
+        onChange={
+          selected && vehicles.some((v) => v !== viewVehicle) ? () => setMenu('vehicle') : null
         }
       />
     </DetailLayout>

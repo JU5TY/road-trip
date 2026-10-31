@@ -17,13 +17,8 @@ import ListRow from '../ui/ListRow';
 import SectionHeader from '../ui/SectionHeader';
 import StatCard from '../ui/StatCard';
 
-/**
- * Green caps line, title, grey subtitle and optional notes. Tapping it calls
- * onPress (edit). `parent` ({ name, onPress }) adds a "Part of <name> ›" link
- * under the title, from a drive to its trip.
- */
-export function TitleBlock({ kicker, title, subtitle, notes, parent, onPress }) {
-  const { c } = useTheme();
+/** Green caps line, title, grey subtitle and optional notes. Tapping it calls onPress (edit). */
+export function TitleBlock({ kicker, title, subtitle, notes, onPress }) {
   const styles = useStyles(makeStyles);
   return (
     <Pressable
@@ -34,20 +29,6 @@ export function TitleBlock({ kicker, title, subtitle, notes, parent, onPress }) 
       <Text style={[type.kicker, styles.kicker]}>{kicker}</Text>
       <Text style={[type.title, styles.title]}>{title}</Text>
       {subtitle ? <Text style={[type.body, styles.subtitle]}>{subtitle}</Text> : null}
-      {parent ? (
-        <Pressable
-          onPress={parent.onPress}
-          accessibilityRole="link"
-          accessibilityLabel={`Part of ${parent.name}`}
-          style={({ pressed }) => [styles.parent, pressed && styles.pressed]}
-        >
-          <Text style={[type.body, styles.parentPrefix]}>Part of </Text>
-          <Text style={[type.button, styles.parentName]} numberOfLines={1}>
-            {parent.name}
-          </Text>
-          <Icon name="chevron_right" size={20} color={c.accent} />
-        </Pressable>
-      ) : null}
       {notes ? <Text style={[type.body, styles.notes]}>{notes}</Text> : null}
     </Pressable>
   );
@@ -255,18 +236,6 @@ const makeStyles = (c) => ({
   kicker: { color: c.accent, marginHorizontal: 4 },
   title: { color: c.text, marginTop: 4, marginHorizontal: 4 },
   subtitle: { color: c.textMuted, marginTop: 2, marginHorizontal: 4 },
-  // 44px tall for the finger, pulled in so the text sits where a subtitle would.
-  parent: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    alignSelf: 'flex-start',
-    minHeight: 44,
-    marginVertical: -10,
-    marginHorizontal: 4,
-  },
-  parentPrefix: { color: c.textMuted },
-  parentName: { color: c.accent, flexShrink: 1 },
-  pressed: { opacity: 0.6 },
   notes: { color: c.text, marginTop: 10, marginHorizontal: 4 },
   hero: {
     flexDirection: 'row',

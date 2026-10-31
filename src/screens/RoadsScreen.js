@@ -1,16 +1,16 @@
 import { router } from 'expo-router';
 import { useState } from 'react';
-import { Pressable, ScrollView, Text, View } from 'react-native';
+import { ScrollView, Text, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import RoadRow from '../components/roads/RoadRow';
 import RoadsRing from '../components/roads/RoadsRing';
-import Icon from '../components/ui/Icon';
+import FilterChip from '../components/ui/FilterChip';
 import IconButton from '../components/ui/IconButton';
 import SectionHeader from '../components/ui/SectionHeader';
 import { useSettings } from '../context/SettingsContext';
 import { useRoadTotals } from '../hooks/useRoadTotals';
-import { useStyles, useTheme } from '../hooks/useTheme';
+import { useStyles } from '../hooks/useTheme';
 import { spacing, type } from '../theme';
 import { distanceParts, formatShortDate } from '../utils/format';
 import { ICONIC_ROADS } from '../utils/iconicRoads';
@@ -20,22 +20,6 @@ const COUNTRIES = ['All', ...new Set(ICONIC_ROADS.map((r) => r.country))];
 /** "Last completed 5 Nov 2026" when done more than once, else "Completed 5 Nov 2026". */
 export const completedOn = ({ count, last }) =>
   `${count > 1 ? 'Last completed' : 'Completed'} ${formatShortDate(last)}`;
-
-function Chip({ label, selected, onPress }) {
-  const { c } = useTheme();
-  const styles = useStyles(makeStyles);
-  return (
-    <Pressable
-      onPress={onPress}
-      accessibilityRole="radio"
-      accessibilityState={{ checked: selected }}
-      style={[styles.chip, selected ? styles.chipOn : styles.chipOff]}
-    >
-      {selected ? <Icon name="check" size={18} color={c.onAccentContainer} /> : null}
-      <Text style={[type.label, selected ? styles.chipTextOn : styles.chipTextOff]}>{label}</Text>
-    </Pressable>
-  );
-}
 
 /** Every Iconic Road: progress, a country filter, then completed and not yet. */
 export default function RoadsScreen() {
@@ -93,7 +77,7 @@ export default function RoadsScreen() {
         role="radiogroup"
       >
         {COUNTRIES.map((name) => (
-          <Chip
+          <FilterChip
             key={name}
             label={name}
             selected={country === name}
@@ -155,18 +139,6 @@ const makeStyles = (c) => ({
   summary: { marginTop: 14 },
   chipScroll: { marginHorizontal: -spacing.md, marginTop: spacing.md, flexGrow: 0 },
   chips: { gap: 8, paddingHorizontal: spacing.md },
-  chip: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 6,
-    height: 32,
-    paddingHorizontal: 14,
-    borderRadius: 8,
-  },
-  chipOn: { gap: 4, paddingLeft: 10, backgroundColor: c.accentContainer },
-  chipOff: { borderWidth: 1, borderColor: c.outline },
-  chipTextOn: { color: c.onAccentContainer },
-  chipTextOff: { color: c.textMuted, fontFamily: type.nav.fontFamily },
   firstGroup: { marginTop: 24 },
   list: { gap: 8 },
 });

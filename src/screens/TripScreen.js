@@ -1,6 +1,6 @@
 import { router, useFocusEffect, useLocalSearchParams } from 'expo-router';
-import { useCallback, useMemo, useRef, useState } from 'react';
-import { ActivityIndicator, Pressable, Text, View } from 'react-native';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { ActivityIndicator, Pressable, ScrollView, Text, View } from 'react-native';
 
 import { showDialog } from '../components/ui/DialogHost';
 import ActionSheet from '../components/ActionSheet';
@@ -8,6 +8,7 @@ import ChartsCard from '../components/charts/ChartsCard';
 import TripPhotos from '../components/photos/TripPhotos';
 import CountriesSection from '../components/countries/CountriesSection';
 import DetailLayout from '../components/detail/DetailLayout';
+import DriveSections from '../components/detail/DriveSections';
 import { routeMarkers, stopMarkerKey } from '../components/detail/mapMarkers';
 import Timeline from '../components/detail/Timeline';
 import IconicRoadsSection from '../components/roads/IconicRoadsSection';
@@ -15,6 +16,7 @@ import { DetailsRows, HeroStats, TitleBlock } from '../components/detail/TripSta
 import EditTripSheet from '../components/EditTripSheet';
 import MoveDriveSheet from '../components/MoveDriveSheet';
 import RouteMap from '../components/RouteMap';
+import FilterChip from '../components/ui/FilterChip';
 import Icon from '../components/ui/Icon';
 import SectionHeader from '../components/ui/SectionHeader';
 import { useSettings } from '../context/SettingsContext';
@@ -22,9 +24,10 @@ import { usePhotos } from '../hooks/usePhotos';
 import { openPremium, usePremium } from '../hooks/usePremium';
 import { useStyles, useTheme } from '../hooks/useTheme';
 import { ensureDrivePlaces } from '../services/placeService';
-import { getDrivePoints } from '../storage/driveStorage';
+import { deleteDrive, getDrivePoints } from '../storage/driveStorage';
 import { getTripCompletions } from '../storage/roadStorage';
 import { deleteTrip, getTrip, updateTrip } from '../storage/tripStorage';
+import { listVehicles, setDriveVehicle } from '../storage/vehicleStorage';
 import { dayBadgeFor, dayColorFor, type } from '../theme';
 import {
   formatDate,
@@ -40,6 +43,7 @@ import { getRoad } from '../utils/iconicRoads';
 import { comingSoon } from '../utils/comingSoon';
 import { countryRows } from '../utils/countries';
 import { buildTripTimeline } from '../utils/timeline';
+import { vehicleLabel } from '../utils/vehicles';
 import {
   deleteTripMessage,
   groupIntoDays,
@@ -60,14 +64,14 @@ function driveMeta(drive, units) {
     : `${formatTime(drive.startedAt)}–${formatTime(drive.endedAt)} · ${distance}`;
 }
 
-/** One drive in a one-day trip's Drives list; its circle is the drive's number. */
-function DriveRow({ drive, number, units, isLast }) {
+/** One drive in a one-day trip's Drives list; its circle is the drive's number. Tapping picks it. */
+function DriveRow({ drive, number, units, isLast, onPick }) {
   const { c } = useTheme();
   const styles = useStyles(makeStyles);
   return (
     <Pressable
-      onPress={() => router.push(`/drives/${drive.id}`)}
-      accessibilityRole="link"
+      onPress={() => onPick(drive.id)}
+      accessibilityRole="button"
       style={({ pressed }) => pressed && styles.pressed}
     >
       <View style={[styles.dayRow, !isLast && styles.divider]}>
@@ -98,9 +102,9 @@ function DriveRow({ drive, number, units, isLast }) {
 /**
  * One day in a multi-day trip's Days list; its circle is the day's number. A
  * day with several drives lists them under it, numbered across the whole trip
- * by `driveNumber`.
+ * by `driveNumber`. Tapping a drive picks it.
  */
-function DayRow({ day, units, driveNumber, isLast }) {
+function DayRow({ day, units, driveNumber, isLast, onPick }) {
   // A day with a drive whose times are hidden (it's just an Iconic Road) shows no times.
   const hideTimes = day.drives.some((d) => d.stats.timesHidden);
   const { c } = useTheme();
@@ -139,8 +143,8 @@ function DayRow({ day, units, driveNumber, isLast }) {
   if (single) {
     return (
       <Pressable
-        onPress={() => router.push(`/drives/${first.id}`)}
-        accessibilityRole="link"
+        onPress={() => onPick(first.id)}
+        accessibilityRole="button"
         style={({ pressed }) => pressed && styles.pressed}
       >
         {row}
@@ -153,8 +157,8 @@ function DayRow({ day, units, driveNumber, isLast }) {
       {day.drives.map((d) => (
         <Pressable
           key={d.id}
-          onPress={() => router.push(`/drives/${d.id}`)}
-          accessibilityRole="link"
+          onPress={() => onPick(d.id)}
+          accessibilityRole="button"
           style={({ pressed }) => [styles.subDrive, pressed && styles.pressed]}
         >
           <Text style={[type.body, styles.text, styles.flex]} numberOfLines={1}>
@@ -168,7 +172,8 @@ function DayRow({ day, units, driveNumber, isLast }) {
 }
 
 export default function TripScreen() {
-  const { id } = useLocalSearchParams();
+  // `drive` picks one of the trip's drives on arrival (e.g. from an Iconic Road).
+  const { id, drive: driveParam } = useLocalSearchParams();
   const { units, showIconicRoads } = useSettings();
   const premium = usePremium();
   const { c } = useTheme();
@@ -177,7 +182,10 @@ export default function TripScreen() {
   const [completions, setCompletions] = useState([]); // Iconic Roads on this trip
   const [pointsByDrive, setPointsByDrive] = useState(null); // driveId -> points
   const [missing, setMissing] = useState(false);
-  const [menu, setMenu] = useState(null); // null | 'options' | 'edit' | 'move'
+  const [menu, setMenu] = useState(null); // null | 'options' | 'edit' | 'move' | 'vehicle'
+  const [picked, setPicked] = useState(driveParam ? Number(driveParam) : null); // drive id, null = All
+  const [vehicles, setVehicles] = useState([]); // the Garage
+  const [loads, setLoads] = useState(0); // bumped to load the trip again (after deleting a drive)
   const {
     photos,
     access: photoAccess,
@@ -204,11 +212,13 @@ export default function TripScreen() {
           setMissing(true);
           return;
         }
-        const [all, roads] = await Promise.all([
+        const [all, roads, garage] = await Promise.all([
           Promise.all(t.drives.map((d) => getDrivePoints(d.id))),
           getTripCompletions(t.id),
+          listVehicles(),
         ]);
         if (cancelled) return;
+        setVehicles(garage);
         setTrip(t);
         setCompletions(roads);
         setPointsByDrive(new Map(t.drives.map((d, i) => [d.id, all[i]])));
@@ -223,7 +233,9 @@ export default function TripScreen() {
       return () => {
         cancelled = true;
       };
-    }, [id])
+      // `loads` is in the list only to load again after a drive is deleted.
+      // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [id, loads])
   );
 
   const days = useMemo(() => (trip ? groupIntoDays(trip.drives) : []), [trip]);
@@ -244,6 +256,25 @@ export default function TripScreen() {
     [days, c]
   );
 
+  // A trip of one drive is that drive; otherwise the picked pill, or null for All.
+  const selectedId =
+    trip?.drives.length === 1
+      ? trip.drives[0].id
+      : (trip?.drives.find((d) => d.id === picked)?.id ?? null);
+
+  // A picked drive shows its rest stops (and border towns) by name; the first
+  // time it's picked, fill in any names the trip view didn't need.
+  const selectedDrive = trip?.drives.find((d) => d.id === selectedId);
+  const named = useRef(new Set());
+  useEffect(() => {
+    if (!selectedDrive || named.current.has(selectedDrive.id)) return;
+    named.current.add(selectedDrive.id);
+    ensureDrivePlaces(selectedDrive, { includeStops: true })
+      .then((places) => setDrivePlaces(selectedDrive.id, places))
+      .catch((err) => console.warn('[trip] stop names failed', err));
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [selectedId]);
+
   const segments = useMemo(() => {
     if (!trip || !pointsByDrive) return [];
     const perDrive = Math.max(200, Math.floor(MAX_MAP_POINTS / trip.drives.length));
@@ -255,15 +286,27 @@ export default function TripScreen() {
             ({ latitude, longitude, timestamp }) => ({ latitude, longitude, timestamp })
           ),
           driveGaps(d),
-          dayColorOf(day.number)
+          // With one drive picked, the others fade back.
+          selectedId && d.id !== selectedId ? `${dayColorOf(day.number)}40` : dayColorOf(day.number)
         )
       )
     );
-  }, [trip, pointsByDrive, days, dayColorOf]);
+  }, [trip, pointsByDrive, days, dayColorOf, selectedId]);
+  // Frame the picked drive (the whole trip for All). From its points, not the
+  // segments, so place names arriving don't move the map again.
+  const fitTo = useMemo(
+    () =>
+      selectedId && pointsByDrive
+        ? downsample(pointsByDrive.get(selectedId) ?? [], 200).map(({ latitude, longitude }) => ({
+            latitude,
+            longitude,
+          }))
+        : undefined,
+    [pointsByDrive, selectedId]
+  );
 
   const driveColors = useMemo(
-    () =>
-      new Map(days.flatMap((day) => day.drives.map((d) => [d.id, dayColorOf(day.number)]))),
+    () => new Map(days.flatMap((day) => day.drives.map((d) => [d.id, dayColorOf(day.number)]))),
     [days, dayColorOf]
   );
 
@@ -323,6 +366,43 @@ export default function TripScreen() {
     }));
   };
 
+  const selected = selectedDrive ?? null;
+  const pick = (driveId) => {
+    setPicked(driveId);
+    showMap();
+  };
+  const dayNumberOf = (d) => days.find((day) => day.drives.includes(d))?.number ?? 1;
+  const vehicle = selected ? (vehicles.find((v) => v.id === selected.vehicleId) ?? null) : null;
+  const chooseVehicle = (vehicleId) => {
+    setMenu(null);
+    setDriveVehicle(selected.id, vehicleId)
+      .then(() =>
+        setTrip((prev) => ({
+          ...prev,
+          drives: prev.drives.map((d) => (d.id === selected.id ? { ...d, vehicleId } : d)),
+        }))
+      )
+      .catch((err) => console.warn('[trip] vehicle change failed', err));
+  };
+  const showDriveStop = (item) => {
+    showMap();
+    mapRef.current?.focusMarker(stopMarkerKey(selected.id, item.time));
+  };
+  const confirmDeleteDrive = () => {
+    setMenu(null);
+    showDialog({
+      title: 'Delete this drive?',
+      message: "Its route and stats will be removed from the trip. This can't be undone.",
+      confirmLabel: 'Delete',
+      destructive: true,
+      onConfirm: () =>
+        deleteDrive(selected.id).then(() => {
+          setPicked(null);
+          setLoads((n) => n + 1);
+        }),
+    });
+  };
+
   const confirmDelete = () => {
     setMenu(null);
     showDialog({
@@ -340,15 +420,28 @@ export default function TripScreen() {
       flat
       highlight={highlight}
       segments={segments}
-      markers={routeMarkers({
-        firstPoint: segments[0]?.coordinates[0],
-        lastPoint: segments.at(-1)?.coordinates.at(-1),
-        startName: first.places.start,
-        endName: last.places.end,
-        drives: trip.drives,
-        c,
-        colorOf: (d) => driveColors.get(d.id),
-      })}
+      fitTo={fitTo}
+      markers={routeMarkers(
+        selected
+          ? {
+              firstPoint: fitTo[0],
+              lastPoint: fitTo.at(-1),
+              startName: selected.places.start,
+              endName: selected.places.end,
+              drives: [selected],
+              c,
+              colorOf: (d) => driveColors.get(d.id),
+            }
+          : {
+              firstPoint: segments[0]?.coordinates[0],
+              lastPoint: segments.at(-1)?.coordinates.at(-1),
+              startName: first.places.start,
+              endName: last.places.end,
+              drives: trip.drives,
+              c,
+              colorOf: (d) => driveColors.get(d.id),
+            }
+      )}
     />
   );
 
@@ -369,15 +462,25 @@ export default function TripScreen() {
     >
       <ActionSheet
         visible={menu === 'options'}
-        title="Trip options"
+        title={selected && !single ? 'Options' : 'Trip options'}
         actions={[
-          // A lone drive can join an earlier trip (e.g. "Continue" was missed).
-          ...(single
+          // The picked drive (or a lone one) can move to another trip, e.g. "Continue" was missed.
+          ...(selected
             ? [
                 {
                   icon: 'drive_file_move',
-                  label: 'Add to another trip',
+                  label: single ? 'Add to another trip' : 'Move this drive to another trip',
                   onPress: () => setMenu('move'),
+                },
+              ]
+            : []),
+          ...(selected && !single
+            ? [
+                {
+                  icon: 'delete',
+                  label: 'Delete this drive',
+                  style: 'destructive',
+                  onPress: confirmDeleteDrive,
                 },
               ]
             : []),
@@ -392,18 +495,31 @@ export default function TripScreen() {
         onSave={save}
         onClose={() => setMenu(null)}
       />
-      {single ? (
+      {selected ? (
         <MoveDriveSheet
           visible={menu === 'move'}
-          drive={first}
-          allowNewTrip={false}
-          onMoved={(tripId) => router.replace(`/trips/${tripId}`)}
+          drive={selected}
+          allowNewTrip={!single}
+          // Follow the drive to its new trip.
+          onMoved={(tripId) => router.replace(`/trips/${tripId}?drive=${selected.id}`)}
           onClose={() => setMenu(null)}
         />
       ) : null}
+      <ActionSheet
+        visible={menu === 'vehicle'}
+        title="Vehicle for this drive"
+        actions={vehicles.map((v) => ({
+          key: String(v.id),
+          label: vehicleLabel(v),
+          detail: v.registration,
+          selected: v.id === selected?.vehicleId,
+          onPress: () => chooseVehicle(v.id),
+        }))}
+        onClose={() => setMenu(null)}
+      />
 
       <TitleBlock
-        // "TRIP ·" first, so it can't be mistaken for a drive's page.
+        // "TRIP ·" first: this page is the trip, whichever drive is picked.
         kicker={`TRIP · ${
           allHidden && days.length === 1
             ? formatDayDate(first.startedAt).toUpperCase()
@@ -414,101 +530,170 @@ export default function TripScreen() {
         notes={trip.notes}
         onPress={() => setMenu('edit')}
       />
-      <HeroStats
-        stats={{ ...summary, movingTimeMs: timeSummary.movingTimeMs }}
-        units={units}
-        timesHidden={allHidden}
-        trip
-        roadCount={roadsShown.length ? new Set(roadsShown.map((r) => r.roadId)).size : 0}
-      />
-      {days.length === 1 ? (
-        <Timeline
-          items={timeline}
-          color={c.accent}
-          units={units}
-          onStopPress={showTripStop}
-          roads={roadsShown.map((r) => ({
-            name: getRoad(r.roadId)?.name,
-            completedAt: r.completedAt,
-          }))}
-          hideTimes={hiddenCount > 0}
-          photos={photos}
-        />
+      {single ? null : (
+        // One page per trip: All, or one drive at a time.
+        <ScrollView
+          horizontal
+          showsHorizontalScrollIndicator={false}
+          style={styles.pillScroll}
+          contentContainerStyle={styles.pills}
+          role="radiogroup"
+        >
+          <FilterChip label="All" selected={!selected} onPress={() => pick(null)} />
+          {trip.drives.map((d, i) => (
+            <FilterChip
+              key={d.id}
+              label={`Drive ${i + 1}`}
+              dot={driveColors.get(d.id)}
+              selected={d.id === selectedId}
+              onPress={() => pick(d.id)}
+            />
+          ))}
+        </ScrollView>
+      )}
+      {selected && !single ? (
+        <View style={styles.picked}>
+          <Text style={[type.section, styles.text]} numberOfLines={1}>
+            {routeLabel(selected.places) ?? `Drive ${trip.drives.indexOf(selected) + 1}`}
+          </Text>
+          <Text style={[type.body, styles.muted]} numberOfLines={1}>
+            {[
+              ...(days.length > 1 ? [`Day ${dayNumberOf(selected)}`] : []),
+              formatDayDate(selected.startedAt),
+              ...(selected.stats.timesHidden
+                ? []
+                : [`${formatTime(selected.startedAt)}–${formatTime(selected.endedAt)}`]),
+            ].join(' · ')}
+          </Text>
+        </View>
       ) : null}
-      {/* A trip of one drive would only repeat itself here. */}
-      {trip.drives.length > 1 ? (
+      {selected ? (
         <>
-          {/* Each circle counts what the section is named after: days, or a one-day trip's drives. */}
-          <SectionHeader title={days.length > 1 ? 'Days' : 'Drives'} />
-          <View style={styles.group}>
-            {days.length > 1
-              ? days.map((day, i) => (
-                  <DayRow
-                    key={day.number}
-                    day={day}
-                    units={units}
-                    driveNumber={(d) => trip.drives.indexOf(d) + 1}
-                    isLast={i === days.length - 1}
-                  />
-                ))
-              : trip.drives.map((d, i) => (
-                  <DriveRow
-                    key={d.id}
-                    drive={d}
-                    number={i + 1}
-                    units={units}
-                    isLast={i === trip.drives.length - 1}
-                  />
-                ))}
-          </View>
+          <DriveSections
+            drive={selected}
+            points={pointsByDrive.get(selected.id) ?? []}
+            color={driveColors.get(selected.id)}
+            completions={completions.filter((r) => r.driveId === selected.id)}
+            photos={photos.filter(
+              (p) => p.time >= selected.startedAt && p.time <= selected.endedAt
+            )}
+            vehicle={vehicle}
+            // Something to change to: another vehicle, or any when none is set.
+            onChangeVehicle={vehicles.some((v) => v !== vehicle) ? () => setMenu('vehicle') : null}
+            onStopPress={showDriveStop}
+            onScrub={setHighlight}
+          />
+          {/* A trip of one drive keeps the trip's own photos section too. */}
+          {single ? (
+            <TripPhotos
+              photos={photos}
+              access={photoAccess}
+              allow={allowPhotos}
+              hideTimes={hiddenCount > 0}
+            />
+          ) : null}
         </>
-      ) : null}
-      <TripPhotos
-        photos={photos}
-        access={photoAccess}
-        allow={allowPhotos}
-        hideTimes={hiddenCount > 0}
-      />
-      <IconicRoadsSection completions={roadsShown} dayOf={dayOf} />
-      <CountriesSection
-        rows={countryRows(
-          trip.drives,
-          days.length > 1
-            ? { dayOf: (d) => days.find((day) => day.drives.includes(d))?.number ?? 1 }
-            : {}
-        )}
-        units={units}
-        scope="trip"
-      />
-      <ChartsCard
-        tracks={tracks}
-        units={units}
-        avgSpeedMps={averageMovingSpeed(timeSummary)}
-        onScrub={setHighlight}
-        speedHidden={hiddenCount > 0}
-      />
-      <DetailsRows
-        // Elevations aren't times, so they count every drive.
-        stats={
-          allHidden
-            ? summary
-            : {
-                ...timeSummary,
-                maxAltitudeM: summary.maxAltitudeM,
-                elevationGainM: summary.elevationGainM,
-              }
-        }
-        elapsedMs={timeSummary.elapsedMs}
-        units={units}
-        timesHidden={allHidden}
-        trip
-        subtitle="Whole trip"
-        hiddenNote={
-          hiddenCount > 0 && !allHidden
-            ? `Times leave out ${hiddenCount === 1 ? 'a drive' : `${hiddenCount} drives`} that ${hiddenCount === 1 ? 'is' : 'are'} just an Iconic Road, for safety.`
-            : null
-        }
-      />
+      ) : (
+        <>
+          <HeroStats
+            stats={{ ...summary, movingTimeMs: timeSummary.movingTimeMs }}
+            units={units}
+            timesHidden={allHidden}
+            trip
+            roadCount={roadsShown.length ? new Set(roadsShown.map((r) => r.roadId)).size : 0}
+          />
+          {days.length === 1 ? (
+            <Timeline
+              items={timeline}
+              color={c.accent}
+              units={units}
+              onStopPress={showTripStop}
+              roads={roadsShown.map((r) => ({
+                name: getRoad(r.roadId)?.name,
+                completedAt: r.completedAt,
+              }))}
+              hideTimes={hiddenCount > 0}
+              photos={photos}
+            />
+          ) : null}
+          {/* A trip of one drive would only repeat itself here. */}
+          {trip.drives.length > 1 ? (
+            <>
+              {/* Each circle counts what the section is named after: days, or a one-day trip's drives. */}
+              <SectionHeader title={days.length > 1 ? 'Days' : 'Drives'} />
+              <View style={styles.group}>
+                {days.length > 1
+                  ? days.map((day, i) => (
+                      <DayRow
+                        key={day.number}
+                        day={day}
+                        units={units}
+                        driveNumber={(d) => trip.drives.indexOf(d) + 1}
+                        isLast={i === days.length - 1}
+                        onPick={pick}
+                      />
+                    ))
+                  : trip.drives.map((d, i) => (
+                      <DriveRow
+                        key={d.id}
+                        drive={d}
+                        number={i + 1}
+                        units={units}
+                        isLast={i === trip.drives.length - 1}
+                        onPick={pick}
+                      />
+                    ))}
+              </View>
+            </>
+          ) : null}
+          <TripPhotos
+            photos={photos}
+            access={photoAccess}
+            allow={allowPhotos}
+            hideTimes={hiddenCount > 0}
+          />
+          <IconicRoadsSection completions={roadsShown} dayOf={dayOf} />
+          <CountriesSection
+            rows={countryRows(
+              trip.drives,
+              days.length > 1
+                ? { dayOf: (d) => days.find((day) => day.drives.includes(d))?.number ?? 1 }
+                : {}
+            )}
+            units={units}
+            scope="trip"
+          />
+          <ChartsCard
+            tracks={tracks}
+            units={units}
+            avgSpeedMps={averageMovingSpeed(timeSummary)}
+            onScrub={setHighlight}
+            speedHidden={hiddenCount > 0}
+          />
+          <DetailsRows
+            // Elevations aren't times, so they count every drive.
+            stats={
+              allHidden
+                ? summary
+                : {
+                    ...timeSummary,
+                    maxAltitudeM: summary.maxAltitudeM,
+                    elevationGainM: summary.elevationGainM,
+                  }
+            }
+            elapsedMs={timeSummary.elapsedMs}
+            units={units}
+            timesHidden={allHidden}
+            trip
+            subtitle="Whole trip"
+            hiddenNote={
+              hiddenCount > 0 && !allHidden
+                ? `Times leave out ${hiddenCount === 1 ? 'a drive' : `${hiddenCount} drives`} that ${hiddenCount === 1 ? 'is' : 'are'} just an Iconic Road, for safety.`
+                : null
+            }
+          />
+        </>
+      )}
     </DetailLayout>
   );
 }
@@ -517,6 +702,9 @@ const makeStyles = (c) => ({
   screen: { flex: 1, backgroundColor: c.background },
   center: { alignItems: 'center', justifyContent: 'center' },
   group: { paddingHorizontal: 12, borderRadius: 12, backgroundColor: c.card, ...c.cardShadow },
+  pillScroll: { marginHorizontal: -16, marginTop: 16, flexGrow: 0 },
+  pills: { gap: 8, paddingHorizontal: 16 },
+  picked: { marginTop: 16, marginHorizontal: 4 },
   dayRow: {
     flexDirection: 'row',
     alignItems: 'center',

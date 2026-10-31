@@ -26,9 +26,8 @@ function DriveRow({ item, isLast }) {
   const styles = useStyles(makeStyles);
   return (
     <Pressable
-      onPress={() =>
-        router.push(item.multiDay ? `/drives/${item.driveId}` : `/trips/${item.tripId}`)
-      }
+      // The trip, with this drive picked.
+      onPress={() => router.push(`/trips/${item.tripId}?drive=${item.driveId}`)}
       accessibilityRole="link"
       style={({ pressed }) => [
         styles.driveRow,

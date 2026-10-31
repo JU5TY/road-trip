@@ -5,7 +5,7 @@ import { type } from '../../theme';
 
 /**
  * Section heading.
- * variant 'title': 18px, for sections of a Trip or Day page ("Details"), with
+ * variant 'title': 18px, for sections of the Trip page ("Details"), with
  *   an optional grey `subtitle` line under it ("Whole trip").
  * variant 'overline': uppercase 14px, for groups on Home, Trips and Iconic
  *   Roads ("LATEST TRIP", month headers). 'label' is the same with less space

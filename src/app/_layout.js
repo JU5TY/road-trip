@@ -64,7 +64,6 @@ function AppStack() {
         <Stack.Protected guard={onboarded}>
           <Stack.Screen name="(tabs)" />
           <Stack.Screen name="trips/[id]" />
-          <Stack.Screen name="drives/[id]" />
           <Stack.Screen name="saved/[id]" options={{ gestureEnabled: false }} />
           <Stack.Screen name="roads/index" />
           <Stack.Screen name="roads/[id]" />

@@ -27,7 +27,7 @@ export async function listVehicles() {
      FROM vehicles v
      LEFT JOIN drives d ON d.vehicle_id = v.id AND d.status = 'completed'
      GROUP BY v.id
-     ORDER BY v.is_default DESC, v.created_at`,
+     ORDER BY v.is_default DESC, v.created_at`
   );
   return rows.map((r) => ({
     id: r.id,
@@ -60,12 +60,12 @@ export async function addVehicle(fields) {
       v.registration,
       v.nickname,
       any ? 0 : 1,
-      Date.now(),
+      Date.now()
     );
     if (!any) {
       await db.runAsync(
         'UPDATE drives SET vehicle_id = ? WHERE vehicle_id IS NULL',
-        res.lastInsertRowId,
+        res.lastInsertRowId
       );
     }
   });
@@ -81,7 +81,7 @@ export async function updateVehicle(id, fields) {
     v.model,
     v.registration,
     v.nickname,
-    id,
+    id
   );
 }
 
@@ -100,7 +100,7 @@ export async function deleteVehicle(id) {
     // Keep a default while any vehicle is left.
     await db.runAsync(
       `UPDATE vehicles SET is_default = 1 WHERE id = (SELECT id FROM vehicles ORDER BY created_at LIMIT 1)
-       AND NOT EXISTS (SELECT 1 FROM vehicles WHERE is_default = 1)`,
+       AND NOT EXISTS (SELECT 1 FROM vehicles WHERE is_default = 1)`
     );
   });
 }

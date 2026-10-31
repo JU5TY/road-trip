@@ -10,7 +10,7 @@ import IconButton from '../ui/IconButton';
 export const MAP_HEIGHT = 400;
 
 /**
- * Trip / Day page: a full-width map under the status bar with a round back
+ * Trip page: a full-width map under the status bar with a round back
  * button, the content below it, and a floating toolbar at the bottom.
  * actions: [{ icon, label, onPress, primary? }]; a primary action shows its label.
  * `mapHeight` below the status bar: 400 on Trip, 380 on Day, 360 on a road.

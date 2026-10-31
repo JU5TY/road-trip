@@ -6,7 +6,7 @@ import { completedLabel, dayLabel, getRoad } from '../../utils/iconicRoads';
 import SectionHeader from '../ui/SectionHeader';
 import RoadRow from './RoadRow';
 
-/** Day page wording: "Completed twice today · 3 times in all", "Completed · 1st time". */
+/** One drive's wording: "Completed twice today · 3 times in all", "Completed · 1st time". */
 function dayPageLabel(count, total, today) {
   const times =
     count === 1 ? 'Completed' : count === 2 ? 'Completed twice' : `Completed ${count} times`;
@@ -15,9 +15,9 @@ function dayPageLabel(count, total, today) {
 }
 
 /**
- * "Iconic Roads" on a Trip or Day page: one row per road.
- * Trip page: pass `dayOf(driveId)`, for "Completed 2 times · Day 3".
- * Day page: pass `totals` (getRoadTotals) and `today` (the drive was today),
+ * "Iconic Roads" on the Trip page (all of it, or one drive): one row per road.
+ * All: pass `dayOf(driveId)`, for "Completed 2 times · Day 3".
+ * One drive: pass `totals` (getRoadTotals) and `today` (the drive was today),
  * for "Completed twice today · 3 times in all".
  * Renders nothing when there are no completions.
  */

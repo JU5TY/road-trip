@@ -1,4 +1,4 @@
-import { useImperativeHandle, useRef } from 'react';
+import { useEffect, useImperativeHandle, useRef } from 'react';
 import { StyleSheet, Text, View } from 'react-native';
 import MapView, { Marker, Polyline } from 'react-native-maps';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
@@ -23,7 +23,9 @@ const DOTS = { lineDashPattern: [1, 10], lineCap: 'round' };
  * highlight: optional { latitude, longitude } shown as a dot (e.g. while
  *            dragging across a chart).
  * `ref` exposes focusMarker(key): zoom to that marker and open its callout.
- * `flat` fills its parent edge to edge, under the status bar (Trip / Day pages).
+ * `fitTo` (coordinates) frames part of the map, e.g. one drive of a trip; the
+ * map moves to it whenever a new array is passed.
+ * `flat` fills its parent edge to edge, under the status bar (the Trip page).
  */
 export default function RouteMap({
   segments,
@@ -31,6 +33,7 @@ export default function RouteMap({
   height = 320,
   flat = false,
   highlight,
+  fitTo,
   ref,
 }) {
   const { scheme } = useTheme();
@@ -52,14 +55,25 @@ export default function RouteMap({
     },
   }));
 
-  const fit = () => {
-    if (all.length > 1) {
+  const fit = (animated = false) => {
+    const target = fitTo?.length > 1 ? fitTo : all;
+    if (target.length > 1) {
       const edgePadding = flat
         ? { ...MAP_PADDING, top: MAP_PADDING.top + insets.top }
         : MAP_PADDING;
-      mapRef.current?.fitToCoordinates(all, { edgePadding, animated: false });
+      mapRef.current?.fitToCoordinates(target, { edgePadding, animated });
     }
   };
+  // Refit when asked to frame something else (the map's first fit is onMapReady).
+  const firstFit = useRef(true);
+  useEffect(() => {
+    if (firstFit.current) {
+      firstFit.current = false;
+      return;
+    }
+    fit(true);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [fitTo]);
 
   return (
     <View style={flat ? styles.flat : [styles.wrap, { height }]}>
@@ -67,7 +81,7 @@ export default function RouteMap({
         <MapView
           ref={mapRef}
           style={StyleSheet.absoluteFill}
-          onMapReady={fit}
+          onMapReady={() => fit()}
           userInterfaceStyle={scheme}
           initialRegion={{
             latitude: all[0].latitude,

@@ -1,12 +1,12 @@
 import { router, useLocalSearchParams } from 'expo-router';
 import { useEffect, useMemo, useState } from 'react';
-import { ActivityIndicator, Animated, Easing, Text, View } from 'react-native';
+import { ActivityIndicator, Animated, Easing, ScrollView, Text, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { routeMarkers } from '../components/detail/mapMarkers';
+import IconicRoadsSection from '../components/roads/IconicRoadsSection';
 import RouteMap from '../components/RouteMap';
 import Button from '../components/ui/Button';
-import Icon from '../components/ui/Icon';
 import IconButton from '../components/ui/IconButton';
 import StatRow from '../components/ui/StatRow';
 import { useSettings } from '../context/SettingsContext';
@@ -20,7 +20,6 @@ import { driveGaps, routeSegments } from '../utils/crossings';
 import { distanceParts, elevationParts, formatDate, formatDurationShort } from '../utils/format';
 import { comingSoon } from '../utils/comingSoon';
 import { downsample } from '../utils/geoMath';
-import { ICONIC_ROADS, groupByRoad } from '../utils/iconicRoads';
 import { dayNumberFor, groupIntoDays, routeLabel, tripTitle } from '../utils/tripSummary';
 
 /** Fades and slides its children up into place, `delay` ms after mounting. */
@@ -43,45 +42,6 @@ function FadeUp({ delay, style, children }) {
   );
 }
 
-/** The completed road's tick: the badge pops in, then its halo grows around it. */
-function RoadBadge() {
-  const { c } = useTheme();
-  const styles = useStyles(makeStyles);
-  const pop = useState(() => new Animated.Value(0))[0];
-  const halo = useState(() => new Animated.Value(0))[0];
-  useEffect(() => {
-    Animated.parallel([
-      Animated.timing(pop, {
-        toValue: 1,
-        duration: 600,
-        delay: 600,
-        easing: Easing.bezier(0.2, 0.8, 0.2, 1),
-        useNativeDriver: true,
-      }),
-      Animated.timing(halo, {
-        toValue: 1,
-        duration: 600,
-        delay: 700,
-        easing: Easing.out(Easing.quad),
-        useNativeDriver: true,
-      }),
-    ]).start();
-  }, [pop, halo]);
-  const popScale = pop.interpolate({ inputRange: [0, 0.6, 1], outputRange: [0.4, 1.12, 1] });
-  const popOpacity = pop.interpolate({ inputRange: [0, 0.6, 1], outputRange: [0, 1, 1] });
-  const haloScale = halo.interpolate({ inputRange: [0, 1], outputRange: [0.6, 1] });
-  return (
-    <View style={styles.badgeWrap}>
-      <Animated.View style={[styles.halo, { opacity: halo, transform: [{ scale: haloScale }] }]} />
-      <Animated.View
-        style={[styles.roadBadge, { opacity: popOpacity, transform: [{ scale: popScale }] }]}
-      >
-        <Icon name="verified" filled size={40} color={c.onRoadBadge} />
-      </Animated.View>
-    </View>
-  );
-}
-
 /** Shown after Stop: the drive just saved, with Share and View. */
 export default function SavedScreen() {
   const { id } = useLocalSearchParams();
@@ -92,7 +52,7 @@ export default function SavedScreen() {
   const [drive, setDrive] = useState(null);
   const [points, setPoints] = useState(null);
   const [trip, setTrip] = useState(null);
-  const [roads, setRoads] = useState({ completions: [], completedCount: 0, totals: new Map() });
+  const [roads, setRoads] = useState({ completions: [], totals: new Map() });
 
   useEffect(() => {
     let cancelled = false;
@@ -109,7 +69,7 @@ export default function SavedScreen() {
       setDrive(d);
       setPoints(p);
       setTrip(t);
-      setRoads({ completions, completedCount: totals.size, totals });
+      setRoads({ completions, totals });
       const places = await ensureDrivePlaces(d, { includeStops: true });
       if (!cancelled) setDrive((prev) => ({ ...prev, places }));
     })().catch((err) => console.warn('[saved] load failed', err));
@@ -186,7 +146,7 @@ export default function SavedScreen() {
           style={[styles.close, { top: insets.top + 12 }]}
         />
       </View>
-      <View style={[styles.body, { paddingBottom: insets.bottom + 24 }]}>
+      <ScrollView style={styles.flex} contentContainerStyle={styles.body}>
         <Text style={[type.kicker, styles.kicker]} numberOfLines={1}>
           {kicker}
         </Text>
@@ -210,48 +170,28 @@ export default function SavedScreen() {
             ]}
           />
         </FadeUp>
-        {showIconicRoads
-          ? groupByRoad(roads.completions).map(({ road, count }) => {
-              const total = roads.totals.get(road.id)?.count ?? count;
-              const today =
-                count === 1
-                  ? 'Completed today'
-                  : count === 2
-                    ? 'Twice today'
-                    : `${count} times today`;
-              return (
-                <View key={road.id} style={styles.roadCard} accessible>
-                  <RoadBadge />
-                  <Text style={[type.kicker, styles.roadMuted, styles.roadKicker]}>
-                    ICONIC ROAD COMPLETED
-                  </Text>
-                  <Text style={[type.section, styles.roadName]} numberOfLines={1}>
-                    {road.name}
-                  </Text>
-                  <Text style={[type.label, styles.roadMuted, styles.regular, styles.roadLine]}>
-                    {[
-                      today,
-                      total > count ? `${total} times in all` : null,
-                      `${roads.completedCount} of ${ICONIC_ROADS.length} roads`,
-                    ]
-                      .filter(Boolean)
-                      .join(' · ')}
-                  </Text>
-                </View>
-              );
-            })
-          : null}
-        <View style={styles.flex} />
-        <View style={styles.buttons}>
-          <Button
-            variant="tonal"
-            icon="ios_share"
-            label="Share"
-            style={styles.flex}
-            onPress={() => comingSoon('Sharing')}
-          />
-          <Button label="View" style={styles.flex} onPress={view} />
-        </View>
+        {showIconicRoads ? (
+          // The Trip page's rows, so any number of roads list the same way.
+          <FadeUp delay={500}>
+            <IconicRoadsSection
+              completions={roads.completions}
+              totals={roads.totals}
+              today
+              header={false}
+              style={styles.roads}
+            />
+          </FadeUp>
+        ) : null}
+      </ScrollView>
+      <View style={[styles.buttons, { paddingBottom: insets.bottom + 24 }]}>
+        <Button
+          variant="tonal"
+          icon="ios_share"
+          label="Share"
+          style={styles.flex}
+          onPress={() => comingSoon('Sharing')}
+        />
+        <Button label="View" style={styles.flex} onPress={view} />
       </View>
     </View>
   );
@@ -262,45 +202,11 @@ const makeStyles = (c) => ({
   center: { alignItems: 'center', justifyContent: 'center' },
   map: { borderBottomWidth: 1, borderBottomColor: c.outline, backgroundColor: c.surface },
   close: { position: 'absolute', left: 12 },
-  body: { flex: 1, paddingHorizontal: spacing.md, paddingTop: 20 },
+  body: { paddingHorizontal: spacing.md, paddingTop: 20, paddingBottom: 24 },
   kicker: { color: c.accent, marginHorizontal: 4 },
   title: { color: c.text, marginTop: 4, marginHorizontal: 4 },
   stats: { marginTop: 18 },
-  regular: { fontFamily: type.body.fontFamily, textAlign: 'center' },
+  roads: { marginTop: 16 },
   flex: { flex: 1 },
-  buttons: { flexDirection: 'row', gap: 10 },
-  roadCard: {
-    alignItems: 'center',
-    marginTop: 20,
-    paddingTop: 20,
-    paddingHorizontal: 16,
-    paddingBottom: 18,
-    borderRadius: 12,
-    backgroundColor: c.roadContainer,
-  },
-  badgeWrap: { width: 96, height: 96, alignItems: 'center', justifyContent: 'center' },
-  // Faint ring (45%) that grows in around the badge.
-  halo: {
-    position: 'absolute',
-    top: 0,
-    left: 0,
-    right: 0,
-    bottom: 0,
-    borderRadius: 48,
-    borderWidth: 6,
-    borderColor: c.roadHalo,
-    opacity: 0.45,
-  },
-  roadBadge: {
-    width: 72,
-    height: 72,
-    borderRadius: 36,
-    alignItems: 'center',
-    justifyContent: 'center',
-    backgroundColor: c.roadBadge,
-  },
-  roadKicker: { marginTop: 10 },
-  roadName: { color: c.onRoadContainer, fontSize: 22, lineHeight: 28, marginTop: 2 },
-  roadLine: { marginTop: 2 },
-  roadMuted: { color: c.roadContainerMuted },
+  buttons: { flexDirection: 'row', gap: 10, paddingHorizontal: spacing.md, paddingTop: 12 },
 });

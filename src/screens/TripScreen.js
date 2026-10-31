@@ -348,21 +348,27 @@ export default function TripScreen() {
     <DetailLayout
       scrollRef={scrollRef}
       map={map}
+      // Top right of the map: Share on its own (one tap), the rest in the menu.
       actions={[
-        { icon: 'edit', label: 'Edit trip', onPress: () => setMenu('edit') },
-        {
-          icon: 'download',
-          label: 'Export',
-          onPress: premium ? () => comingSoon('Exporting trips') : openPremium,
-        },
-        { icon: 'more_horiz', label: 'More options', onPress: () => setMenu('options') },
-        { icon: 'ios_share', label: 'Share', primary: true, onPress: () => comingSoon('Sharing') },
+        { icon: 'ios_share', label: 'Share', onPress: () => comingSoon('Sharing') },
+        { icon: 'more_vert', label: 'More options', onPress: () => setMenu('options') },
       ]}
     >
       <ActionSheet
         visible={menu === 'options'}
         title={selected && !single ? 'Options' : 'Trip options'}
         actions={[
+          { icon: 'edit', label: 'Edit trip', onPress: () => setMenu('edit') },
+          {
+            icon: 'download',
+            label: 'Export',
+            detail: premium ? null : 'Premium',
+            onPress: () => {
+              setMenu(null);
+              if (premium) comingSoon('Exporting trips');
+              else openPremium();
+            },
+          },
           // The picked drive (or a lone one) can move to another trip, e.g. "Continue" was missed.
           ...(selected
             ? [

@@ -19,9 +19,18 @@ function dayPageLabel(count, total, today) {
  * All: pass `dayOf(driveId)`, for "Completed 2 times · Day 3".
  * One drive: pass `totals` (getRoadTotals) and `today` (the drive was today),
  * for "Completed twice today · 3 times in all".
+ * `header={false}` leaves out the title and All roads link (Drive saved, where
+ * the rows speak for themselves); `style` then spaces the list.
  * Renders nothing when there are no completions.
  */
-export default function IconicRoadsSection({ completions, dayOf, totals, today = false }) {
+export default function IconicRoadsSection({
+  completions,
+  dayOf,
+  totals,
+  today = false,
+  header = true,
+  style,
+}) {
   const styles = useStyles(makeStyles);
   const groups = new Map();
   for (const c of completions) {
@@ -34,13 +43,15 @@ export default function IconicRoadsSection({ completions, dayOf, totals, today =
   if (groups.size === 0) return null;
   return (
     <>
-      <SectionHeader
-        title="Iconic Roads"
-        actionLabel="All roads"
-        onAction={() => router.push('/roads')}
-        style={styles.header}
-      />
-      <View style={styles.list}>
+      {header ? (
+        <SectionHeader
+          title="Iconic Roads"
+          actionLabel="All roads"
+          onAction={() => router.push('/roads')}
+          style={styles.header}
+        />
+      ) : null}
+      <View style={[styles.list, style]}>
         {[...groups.values()].map(({ road, count, days }) => (
           <RoadRow
             key={road.id}

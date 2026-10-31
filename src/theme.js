@@ -55,7 +55,6 @@ const light = {
   recordingPill: '#FCE8E6',
   onRecordingPill: '#A50E0E',
   floating: '#FFFFFF', // round buttons over the map, the Record pill
-  toolbar: '#FFFFFF', // floating action toolbar
   navBar: '#FFFFFF',
   navBorder: '#E3E5E8',
   navPill: 'transparent',
@@ -129,7 +128,6 @@ const dark = {
   recordingPill: '#4A1C1A',
   onRecordingPill: '#F6AEA9',
   floating: '#35363A',
-  toolbar: '#35363A',
   navBar: '#2C2D31',
   navBorder: '#2C2D31',
   navPill: 'transparent',
@@ -206,14 +204,11 @@ export const radius = { sm: 6, md: 12, lg: 12, card: 12, pill: 999 };
  * Buttons that float over the bottom of a scrolling page, and the room the
  * page leaves under its last item so they never cover it: how high the button
  * sits, its height, and a 16 gap. The Record pill floats over Home and Trips
- * (above the nav), the toolbar over the Trip and road pages (above the
- * phone's bottom inset, which those pages add).
+ * (above the nav).
  */
 export const floating = {
   recordPill: { lift: 16, height: 56 },
-  toolbar: { lift: 28, height: 64 },
 };
 export const bottomSpace = {
   recordPill: floating.recordPill.lift + floating.recordPill.height + 16,
-  toolbar: floating.toolbar.lift + floating.toolbar.height + 16,
 };

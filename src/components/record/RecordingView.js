@@ -1,7 +1,7 @@
 import { useKeepAwake } from 'expo-keep-awake';
 import { router } from 'expo-router';
 import { useState } from 'react';
-import { ActivityIndicator, Linking, Text, View } from 'react-native';
+import { ActivityIndicator, LayoutAnimation, Linking, Text, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { useSettings } from '../../context/SettingsContext';
@@ -18,6 +18,8 @@ import LiveMap from './LiveMap';
 
 const GOOGLE_MAPS_NAV_URL = 'https://www.google.com/maps/dir/?api=1&travelmode=driving';
 const BREAK_SOON_MS = 30 * 60 * 1000; // the break bar shows this long before a break is due
+// The map eases shorter as the break bar fades in (and back when a stop resets it).
+const BREAK_BAR_ANIMATION = LayoutAnimation.create(350, 'easeInEaseOut', 'opacity');
 
 /** Keeps the screen on while mounted (only while a drive is live and Record is showing). */
 function KeepScreenOn() {
@@ -83,6 +85,12 @@ export default function RecordingView({
   const breakSoon = breakReminderMinutes > 0 && live.stintMs >= breakDueMs - BREAK_SOON_MS;
   const breakDue = breakSoon && live.stintMs >= breakDueMs;
   const overdueMs = live.stintMs - breakDueMs;
+  // When the bar comes or goes, animate the next layout so the map doesn't jump.
+  const [breakShown, setBreakShown] = useState(breakSoon);
+  if (breakShown !== breakSoon) {
+    LayoutAnimation.configureNext(BREAK_BAR_ANIMATION);
+    setBreakShown(breakSoon);
+  }
   // Trips shows the "Recording · 1h 12m" banner to come back.
   const minimise = () => router.navigate('/trips');
   const closeDialog = (then) => () => {

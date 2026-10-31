@@ -6,7 +6,6 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { showMessage } from '../components/ui/DialogHost';
 import ActionSheet from '../components/ActionSheet';
-import RegistrationTag from '../components/RegistrationTag';
 import VehicleSheet from '../components/VehicleSheet';
 import Icon from '../components/ui/Icon';
 import ListRow from '../components/ui/ListRow';
@@ -24,7 +23,6 @@ import { comingSoon } from '../utils/comingSoon';
 import { distanceParts, formatBreakReminder } from '../utils/format';
 import { COUNTRIES_ATTRIBUTION } from '../utils/countries';
 import { ICONIC_ROADS, ROADS_ATTRIBUTION } from '../utils/iconicRoads';
-import { vehicleLabel } from '../utils/vehicles';
 
 const UNIT_LABELS = { metric: 'Kilometres', imperial: 'Miles' };
 const THEMES = [
@@ -167,10 +165,8 @@ export default function SettingsScreen() {
               <Icon name="directions_car" filled size={22} color={c.onAccentContainer} />
             </View>
           }
-          title={vehicleLabel(v)}
-          titleAccessory={
-            v.registration ? <RegistrationTag registration={v.registration} /> : null
-          }
+          // Just make and model here; the nickname and registration show on drives.
+          title={`${v.make} ${v.model}`.trim()}
           subtitle={vehicleSubtitle(v, units)}
           onPress={() => setEditing(v)}
           style={styles.vehicleRow}

@@ -11,7 +11,6 @@ import {
   speedUnit,
   toSpeed,
 } from '../../utils/format';
-import { averageMovingSpeed } from '../../utils/geoMath';
 import Icon from '../ui/Icon';
 import ListRow from '../ui/ListRow';
 import SectionHeader from '../ui/SectionHeader';
@@ -41,16 +40,12 @@ export function TitleBlock({ kicker, title, subtitle, notes, onPress }) {
  * leaves out drives whose times are hidden. `timesHidden` swaps Driving time for
  * a note and Avg speed for Elevation gain (a drive that starts and ends at an
  * Iconic Road); `roadCount` and `countryCount` (shown from 2) add chips.
- * A `trip` keeps only Driving time and no stops chip: over several drives the
- * highest point, average speed and stops are details, not headlines
- * (DetailsRows lists them).
  */
 export function HeroStats({
   stats,
   units,
   avgSpeedMps,
   timesHidden = false,
-  trip = false,
   roadCount = 0,
   countryCount = 0,
 }) {
@@ -59,8 +54,7 @@ export function HeroStats({
   const distance = distanceParts(stats.distanceM, units);
   const highest = elevationParts(stats.maxAltitudeM, units);
   const gain = elevationParts(stats.elevationGainM, units);
-  // A drive's stops are a headline; a trip's are in its Details.
-  const stopChip = !trip && stats.stopCount > 0;
+  const stopChip = stats.stopCount > 0;
 
   return (
     <>
@@ -110,34 +104,32 @@ export function HeroStats({
             value={formatDurationShort(stats.movingTimeMs)}
           />
         )}
-        {trip ? null : (
-          <View style={styles.row}>
+        <View style={styles.row}>
+          <StatCard
+            style={styles.half}
+            icon="landscape"
+            label="Highest point"
+            value={highest.value}
+            unit={highest.unit}
+          />
+          {timesHidden ? (
             <StatCard
               style={styles.half}
-              icon="landscape"
-              label="Highest point"
-              value={highest.value}
-              unit={highest.unit}
+              icon="trending_up"
+              label="Elevation gain"
+              value={gain.value}
+              unit={gain.unit}
             />
-            {timesHidden ? (
-              <StatCard
-                style={styles.half}
-                icon="trending_up"
-                label="Elevation gain"
-                value={gain.value}
-                unit={gain.unit}
-              />
-            ) : (
-              <StatCard
-                style={styles.half}
-                icon="speed"
-                label="Avg speed"
-                value={String(Math.round(toSpeed(avgSpeedMps, units)))}
-                unit={speedUnit(units)}
-              />
-            )}
-          </View>
-        )}
+          ) : (
+            <StatCard
+              style={styles.half}
+              icon="speed"
+              label="Avg speed"
+              value={String(Math.round(toSpeed(avgSpeedMps, units)))}
+              unit={speedUnit(units)}
+            />
+          )}
+        </View>
       </View>
     </>
   );
@@ -166,16 +158,14 @@ function TimesHiddenCard() {
  * "Details" rows: time first, speed last (Max speed stays low-key; Avg speed
  * is a tile above). With `timesHidden` only the rest-stop count is left. Rest
  * stops is left out when there are none, Longest stretch when it's just the
- * moving time again (or unknown), and the section when no rows are left. A
- * `trip` also lists Highest point and Avg speed, which its tiles leave out. `hiddenNote` explains that
- * some drives' times were left out of a trip's totals.
+ * moving time again (or unknown), and the section when no rows are left.
+ * `hiddenNote` explains that some drives' times were left out of a trip's totals.
  */
 export function DetailsRows({
   stats,
   elapsedMs,
   units,
   timesHidden = false,
-  trip = false,
   hiddenNote,
   subtitle,
 }) {
@@ -184,13 +174,11 @@ export function DetailsRows({
   // Drives recorded before this stat existed don't have it.
   const longest = stats.longestStintMs == null ? null : formatDurationShort(stats.longestStintMs);
   const showLongest = longest != null && longest !== formatDurationShort(stats.movingTimeMs);
-  const highest = ['landscape', 'Highest point', formatElevation(stats.maxAltitudeM, units)];
   const gain = ['trending_up', 'Elevation gain', formatElevation(stats.elevationGainM, units)];
   const rows = timesHidden
-    ? [
-        ...(hasStops ? [['local_cafe', 'Rest stops', String(stats.stopCount)]] : []),
-        ...(trip ? [highest, gain] : []),
-      ]
+    ? hasStops
+      ? [['local_cafe', 'Rest stops', String(stats.stopCount)]]
+      : []
     : [
         ['schedule', 'Elapsed time', formatDurationShort(elapsedMs)],
         ...(showLongest ? [['hourglass_top', 'Longest stretch', longest]] : []),
@@ -203,9 +191,7 @@ export function DetailsRows({
               ],
             ]
           : []),
-        ...(trip ? [highest] : []),
         gain,
-        ...(trip ? [['speed', 'Avg speed', formatSpeed(averageMovingSpeed(stats), units)]] : []),
         ['bolt', 'Max speed', formatSpeed(stats.topSpeedMps, units)],
       ];
   if (rows.length === 0) return null;

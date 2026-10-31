@@ -3,7 +3,7 @@
 // longitude, timestamp }, oldest first).
 //
 // Item types:
-//   { type: 'start' | 'finish', time, place, dayNumber? }
+//   { type: 'start' | 'finish', time, place, dayNumber? }        (trip timelines add `day`)
 //   { type: 'leg', distanceM, durationMs }                      driving between events
 //   { type: 'stop', time, endTime, place, latitude, longitude } rest stop
 //   { type: 'crossing', time, country, from }                   crossed a border (names)
@@ -135,13 +135,16 @@ export function buildDriveTimeline(drive, points, { dayNumber } = {}) {
 
 /**
  * Timeline of a whole trip: each drive's timeline in order, joined by a
- * same-day "break" or an "overnight" before the next driving day.
+ * same-day "break" or an "overnight" before the next driving day. Each item
+ * carries its `day` (for its colour); on a trip of several days, each day's
+ * first start also has its `dayNumber` (shown as "Day 2").
  * `pointsByDrive` is a Map of drive id → points.
  */
 export function buildTripTimeline(trip, pointsByDrive) {
   const items = [];
   let prev = null;
-  for (const day of groupIntoDays(trip.drives)) {
+  const days = groupIntoDays(trip.drives);
+  for (const day of days) {
     day.drives.forEach((drive, i) => {
       if (prev) {
         const gap = Math.max(0, drive.startedAt - prev.endedAt);
@@ -154,8 +157,8 @@ export function buildTripTimeline(trip, pointsByDrive) {
       // Only label the first drive of each day with its day number.
       items.push(
         ...buildDriveTimeline(drive, pointsByDrive.get(drive.id) ?? [], {
-          dayNumber: i === 0 ? day.number : undefined,
-        })
+          dayNumber: i === 0 && days.length > 1 ? day.number : undefined,
+        }).map((item) => ({ ...item, day: day.number }))
       );
       prev = drive;
     });

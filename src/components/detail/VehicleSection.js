@@ -8,15 +8,17 @@ import Icon from '../ui/Icon';
 import SectionHeader from '../ui/SectionHeader';
 
 /**
- * A drive's "Vehicle" section: the vehicle's name (nickname, else make and
- * model) with its registration under it, and Change when `onChange` is given.
- * Without a vehicle it offers Choose, or shows nothing when there's nothing to
- * choose from. The vehicle's totals live in the Garage.
+ * The Trip page's "Vehicle" section: the vehicle's name (nickname, else make
+ * and model) with its registration under it, and Change when `onChange` is
+ * given (a drive). For a whole trip driven in `count` vehicles it says
+ * "2 vehicles". Without a vehicle it offers Choose, or shows nothing when
+ * there's nothing to choose from. The vehicle's totals live in the Garage.
  */
-export default function VehicleSection({ vehicle, onChange }) {
+export default function VehicleSection({ vehicle, count = 1, onChange }) {
   const { c } = useTheme();
   const styles = useStyles(makeStyles);
-  if (!vehicle && !onChange) return null;
+  const several = count > 1;
+  if (!vehicle && !several && !onChange) return null;
   return (
     <>
       <SectionHeader title="Vehicle" />
@@ -26,9 +28,9 @@ export default function VehicleSection({ vehicle, onChange }) {
         </View>
         <View style={styles.text}>
           <Text style={[type.bodyStrong, styles.name]} numberOfLines={1}>
-            {vehicle ? vehicleLabel(vehicle) : 'No vehicle'}
+            {several ? `${count} vehicles` : vehicle ? vehicleLabel(vehicle) : 'No vehicle'}
           </Text>
-          {vehicle?.registration ? (
+          {!several && vehicle?.registration ? (
             <RegistrationTag registration={vehicle.registration} style={styles.tag} />
           ) : null}
         </View>

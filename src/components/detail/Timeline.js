@@ -40,7 +40,9 @@ function EventRow({ item, color, onPress, hideTimes }) {
         ? 'Rest stop'
         : `Rest stop · ${formatDurationShort(item.endTime - item.time)}`
       : item.type === 'start'
-        ? 'Start'
+        ? item.dayNumber
+          ? `Day ${item.dayNumber} · Start`
+          : 'Start'
         : 'Finish';
 
   const body = (
@@ -170,7 +172,8 @@ function roadsOnLeg(items, i, roads) {
  * utils/timeline.js), drawn in the route colour. onStopPress(item) on a stop.
  * `roads` ([{ name, completedAt }]) puts an Iconic Road chip on the leg it was
  * completed on; `hideTimes` drops clock times and durations. `photos` (from
- * usePhotos) puts the ones taken at a rest stop under it.
+ * usePhotos) puts the ones taken at a rest stop under it. `colorOfDay(n)`
+ * colours a trip timeline's items by their day instead of `color`.
  */
 export default function Timeline({
   items,
@@ -180,6 +183,7 @@ export default function Timeline({
   roads = [],
   hideTimes = false,
   photos = [],
+  colorOfDay,
 }) {
   const { c } = useTheme();
   const styles = useStyles(makeStyles);
@@ -213,7 +217,7 @@ export default function Timeline({
           <GapRow
             key={`${item.type}-${i}`}
             item={item}
-            color={color}
+            color={colorOfDay && item.day ? colorOfDay(item.day) : color}
             units={units}
             hideTimes={hideTimes}
             roads={item.type === 'leg' ? roadsOnLeg(items, i, roads) : []}
@@ -222,7 +226,7 @@ export default function Timeline({
           <EventRow
             key={`${item.type}-${i}`}
             item={item}
-            color={color}
+            color={colorOfDay && item.day ? colorOfDay(item.day) : color}
             onPress={onStopPress}
             hideTimes={hideTimes}
           />

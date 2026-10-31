@@ -1,6 +1,6 @@
 {
   "expo": {
-    "name": "Road Trip",
+    "name": "Roads Ahead",
     "slug": "road-trip",
     "platforms": ["ios", "android"],
     "scheme": "roadtrip",
@@ -15,7 +15,7 @@
     "android": {
       "package": "com.justinwoodford.roadtrip",
       "adaptiveIcon": {
-        "backgroundColor": "#0E1116",
+        "backgroundColor": "#1A73E8",
         "foregroundImage": "./assets/android-icon-foreground.png",
         "backgroundImage": "./assets/android-icon-background.png",
         "monochromeImage": "./assets/android-icon-monochrome.png"
@@ -39,17 +39,17 @@
       [
         "expo-location",
         {
-          "locationWhenInUsePermission": "Road Trip uses your location to record your route.",
+          "locationWhenInUsePermission": "Roads Ahead uses your location to record your route.",
           "isIosBackgroundLocationEnabled": true,
           "isAndroidBackgroundLocationEnabled": false,
           "isAndroidForegroundServiceEnabled": true,
-          "locationAlwaysAndWhenInUsePermission": "Road Trip records your route while you drive, including while you're using Google Maps."
+          "locationAlwaysAndWhenInUsePermission": "Roads Ahead records your route while you drive, including while you're using Google Maps."
         }
       ],
       [
         "expo-media-library",
         {
-          "photosPermission": "Road Trip shows the photos you took during a trip alongside it.",
+          "photosPermission": "Roads Ahead shows the photos you took during a trip alongside it.",
           "savePhotosPermission": false,
           "isAccessMediaLocationEnabled": false,
           "granularPermissions": ["photo"]

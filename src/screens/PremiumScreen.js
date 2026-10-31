@@ -35,7 +35,7 @@ function FeatureTile({ icon, title, description }) {
 }
 
 /**
- * Road Trip Premium: what it adds and the yearly price. Opens from You and from
+ * Roads Ahead Premium: what it adds and the yearly price. Opens from You and from
  * any Premium badge. Payments aren't connected yet, so Sign up says it's coming.
  */
 export default function PremiumScreen() {

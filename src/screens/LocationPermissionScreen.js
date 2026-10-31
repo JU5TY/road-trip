@@ -52,7 +52,7 @@ export default function LocationPermissionScreen() {
         <Icon name="location_on" filled size={40} color={c.accent} />
       </View>
       <Text style={[type.title, styles.text, styles.title]} role="heading">
-        Road Trip needs your location
+        Roads Ahead needs your location
       </Text>
       <Text style={[type.bodyLarge, styles.muted, styles.lead]}>
         {"It's how the app records where you drive."}

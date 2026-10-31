@@ -293,7 +293,7 @@ export default function SettingsScreen() {
         value={version}
         chevron={false}
         onPress={() =>
-          showMessage(`Road Trip ${version}`, `${ROADS_ATTRIBUTION}\n${COUNTRIES_ATTRIBUTION}`)
+          showMessage(`Roads Ahead ${version}`, `${ROADS_ATTRIBUTION}\n${COUNTRIES_ATTRIBUTION}`)
         }
         divider={__DEV__}
       />

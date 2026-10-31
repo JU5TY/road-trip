@@ -16,7 +16,7 @@ const CONTENT = {
   ask: {
     title: 'Allow location to record your trip',
     body: [
-      'Road Trip uses GPS to draw your route and work out distance, speed and rest stops.',
+      'Roads Ahead uses GPS to draw your route and work out distance, speed and rest stops.',
       'It keeps recording while you use Google Maps. Your trips stay on this phone.',
     ],
     hint: CHOICE_HINT,
@@ -25,8 +25,8 @@ const CONTENT = {
   },
   // Denied and the system won't ask again: only Settings can fix it.
   blocked: {
-    title: 'Location is off for Road Trip',
-    body: ['Road Trip needs your location to record a trip.'],
+    title: 'Location is off for Roads Ahead',
+    body: ['Roads Ahead needs your location to record a trip.'],
     hint: 'In Settings, open Location (or Permissions → Location) and choose "While using the app".',
     primary: 'Open Settings',
     secondary: 'Cancel',
@@ -35,7 +35,7 @@ const CONTENT = {
   approximate: {
     title: 'Turn on precise location',
     body: [
-      'Road Trip only has your approximate location, which is too rough to measure distance or speed.',
+      'Roads Ahead only has your approximate location, which is too rough to measure distance or speed.',
     ],
     hint: 'In Settings, open Location and turn on "Use precise location".',
     primary: 'Open Settings',

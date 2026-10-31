@@ -4,7 +4,7 @@ export const PREMIUM_PRICE = '£19.99';
 export const PREMIUM_TAGLINE = 'Make it yours and keep it safe.';
 
 /**
- * Whether Road Trip Premium is active. Payments aren't connected yet (they need
+ * Whether Roads Ahead Premium is active. Payments aren't connected yet (they need
  * Google Play Billing / StoreKit in a new build), so everyone is on the free plan.
  */
 export function usePremium() {

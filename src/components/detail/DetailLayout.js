@@ -10,14 +10,11 @@ import IconButton from '../ui/IconButton';
 
 export const MAP_HEIGHT = 400;
 
-// How far the content card overlaps the bottom of the map, and its corners.
-const OVERLAP = 20;
-
 /**
  * Trip page: a full-width map under the status bar with a round back
- * button, the content below it on a card that slides up over the map (the map
- * scrolls at half speed, so it seems to stay behind), and a floating toolbar
- * at the bottom.
+ * button, the content below it on a panel that slides up over the map (the
+ * map scrolls at half speed, so it seems to stay behind), and a floating
+ * toolbar at the bottom.
  * actions: [{ icon, label, onPress, primary? }]; a primary action shows its label.
  * `mapHeight` below the status bar: 400 on Trip, 380 on Day, 360 on a road.
  */
@@ -42,7 +39,8 @@ export default function DetailLayout({
     <View style={styles.screen}>
       <Animated.ScrollView
         ref={scrollRef}
-        contentContainerStyle={{ paddingBottom: 120 + insets.bottom }}
+        // The panel's own colour runs to the end, under the toolbar.
+        contentContainerStyle={styles.scrollContent}
         scrollEventThrottle={16}
         onScroll={Animated.event([{ nativeEvent: { contentOffset: { y: scrollY } } }], {
           useNativeDriver: true,
@@ -56,7 +54,7 @@ export default function DetailLayout({
         >
           {map}
         </Animated.View>
-        <View style={styles.content}>{children}</View>
+        <View style={[styles.content, { paddingBottom: 120 + insets.bottom }]}>{children}</View>
       </Animated.ScrollView>
       <IconButton
         icon="arrow_back"
@@ -107,17 +105,16 @@ function Toolbar({ actions, bottom }) {
 const makeStyles = (c) => ({
   screen: { flex: 1, backgroundColor: c.background },
   map: { backgroundColor: c.surface },
+  scrollContent: { flexGrow: 1 },
+  // A straight top edge where it meets the map (the Google logo stays clear).
   content: {
-    marginTop: -OVERLAP,
+    flexGrow: 1,
     paddingHorizontal: spacing.md,
     paddingTop: spacing.lg,
-    borderTopLeftRadius: OVERLAP,
-    borderTopRightRadius: OVERLAP,
     backgroundColor: c.background,
-    // A soft edge where the card meets the map.
     shadowColor: '#000',
-    shadowOpacity: 0.12,
-    shadowRadius: 8,
+    shadowOpacity: 0.1,
+    shadowRadius: 6,
     shadowOffset: { width: 0, height: -2 },
     elevation: 4,
   },

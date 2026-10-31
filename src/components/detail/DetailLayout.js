@@ -1,5 +1,6 @@
 import { router } from 'expo-router';
-import { Pressable, ScrollView, Text, View } from 'react-native';
+import { useState } from 'react';
+import { Animated, Pressable, Text, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { useStyles, useTheme } from '../../hooks/useTheme';
@@ -9,9 +10,14 @@ import IconButton from '../ui/IconButton';
 
 export const MAP_HEIGHT = 400;
 
+// How far the content card overlaps the bottom of the map, and its corners.
+const OVERLAP = 20;
+
 /**
  * Trip page: a full-width map under the status bar with a round back
- * button, the content below it, and a floating toolbar at the bottom.
+ * button, the content below it on a card that slides up over the map (the map
+ * scrolls at half speed, so it seems to stay behind), and a floating toolbar
+ * at the bottom.
  * actions: [{ icon, label, onPress, primary? }]; a primary action shows its label.
  * `mapHeight` below the status bar: 400 on Trip, 380 on Day, 360 on a road.
  */
@@ -24,13 +30,34 @@ export default function DetailLayout({
 }) {
   const insets = useSafeAreaInsets();
   const styles = useStyles(makeStyles);
+  const [scrollY] = useState(() => new Animated.Value(0));
+  // Scrolling up, the map moves at half speed; pulled down past the top, it
+  // stays pinned while the content bounces.
+  const mapShift = scrollY.interpolate({
+    inputRange: [-1, 0, 1],
+    outputRange: [-1, 0, 0.5],
+  });
 
   return (
     <View style={styles.screen}>
-      <ScrollView ref={scrollRef} contentContainerStyle={{ paddingBottom: 120 + insets.bottom }}>
-        <View style={[styles.map, { height: mapHeight + insets.top }]}>{map}</View>
+      <Animated.ScrollView
+        ref={scrollRef}
+        contentContainerStyle={{ paddingBottom: 120 + insets.bottom }}
+        scrollEventThrottle={16}
+        onScroll={Animated.event([{ nativeEvent: { contentOffset: { y: scrollY } } }], {
+          useNativeDriver: true,
+        })}
+      >
+        <Animated.View
+          style={[
+            styles.map,
+            { height: mapHeight + insets.top, transform: [{ translateY: mapShift }] },
+          ]}
+        >
+          {map}
+        </Animated.View>
         <View style={styles.content}>{children}</View>
-      </ScrollView>
+      </Animated.ScrollView>
       <IconButton
         icon="arrow_back"
         variant="floating"
@@ -79,8 +106,21 @@ function Toolbar({ actions, bottom }) {
 
 const makeStyles = (c) => ({
   screen: { flex: 1, backgroundColor: c.background },
-  map: { borderBottomWidth: 1, borderBottomColor: c.outline, backgroundColor: c.surface },
-  content: { paddingHorizontal: spacing.md, paddingTop: spacing.lg },
+  map: { backgroundColor: c.surface },
+  content: {
+    marginTop: -OVERLAP,
+    paddingHorizontal: spacing.md,
+    paddingTop: spacing.lg,
+    borderTopLeftRadius: OVERLAP,
+    borderTopRightRadius: OVERLAP,
+    backgroundColor: c.background,
+    // A soft edge where the card meets the map.
+    shadowColor: '#000',
+    shadowOpacity: 0.12,
+    shadowRadius: 8,
+    shadowOffset: { width: 0, height: -2 },
+    elevation: 4,
+  },
   back: { position: 'absolute', left: 12 },
   toolbarWrap: { position: 'absolute', left: 0, right: 0, alignItems: 'center' },
   toolbar: {

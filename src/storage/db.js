@@ -98,6 +98,20 @@ const MIGRATIONS = [
   `,
   // 6: ferry and tunnel crossings on each drive (JSON, see utils/crossings.js).
   'ALTER TABLE drives ADD COLUMN sea_crossings TEXT;',
+  // 7: vehicles get a make, model, optional registration and nickname. The old
+  // name is split at its first space ("Mazda MX-5" -> Mazda, MX-5); `name`
+  // stays (it's NOT NULL) and holds the label (utils/vehicles.js vehicleLabel).
+  `
+    ALTER TABLE vehicles ADD COLUMN make TEXT;
+    ALTER TABLE vehicles ADD COLUMN model TEXT;
+    ALTER TABLE vehicles ADD COLUMN registration TEXT;
+    ALTER TABLE vehicles ADD COLUMN nickname TEXT;
+    UPDATE vehicles SET
+      make = CASE WHEN instr(trim(name), ' ') > 0
+        THEN substr(trim(name), 1, instr(trim(name), ' ') - 1) ELSE trim(name) END,
+      model = CASE WHEN instr(trim(name), ' ') > 0
+        THEN trim(substr(trim(name), instr(trim(name), ' ') + 1)) ELSE '' END;
+  `,
 ];
 
 async function migrate(db) {

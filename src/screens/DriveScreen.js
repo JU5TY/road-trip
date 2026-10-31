@@ -10,7 +10,8 @@ import DetailLayout from '../components/detail/DetailLayout';
 import { routeMarkers, stopMarkerKey } from '../components/detail/mapMarkers';
 import Timeline from '../components/detail/Timeline';
 import IconicRoadsSection from '../components/roads/IconicRoadsSection';
-import { DetailsRows, HeroStats, TitleBlock, vehicleRows } from '../components/detail/TripStats';
+import { DetailsRows, HeroStats, TitleBlock } from '../components/detail/TripStats';
+import VehicleSection from '../components/detail/VehicleSection';
 import MoveDriveSheet from '../components/MoveDriveSheet';
 import RouteMap from '../components/RouteMap';
 import { useSettings } from '../context/SettingsContext';
@@ -22,7 +23,7 @@ import { ensureDrivePlaces } from '../services/placeService';
 import { deleteDrive, getDrive, getDrivePoints } from '../storage/driveStorage';
 import { getDriveCompletions } from '../storage/roadStorage';
 import { getTrip } from '../storage/tripStorage';
-import { getVehicleNames } from '../storage/vehicleStorage';
+import { listVehicles, setDriveVehicle } from '../storage/vehicleStorage';
 import { dayColorFor } from '../theme';
 import { countryRows } from '../utils/countries';
 import { driveGaps, routeSegments, withoutCrossings } from '../utils/crossings';
@@ -31,6 +32,7 @@ import { averageMovingSpeed, downsample } from '../utils/geoMath';
 import { getRoad } from '../utils/iconicRoads';
 import { comingSoon } from '../utils/comingSoon';
 import { buildDriveTimeline } from '../utils/timeline';
+import { vehicleLabel } from '../utils/vehicles';
 import {
   dayNumberFor,
   driveElapsedMs,
@@ -50,10 +52,10 @@ export default function DriveScreen() {
   const [points, setPoints] = useState(null);
   const [trip, setTrip] = useState(null);
   const [completions, setCompletions] = useState([]); // Iconic Roads on this drive
-  const [vehicleNames, setVehicleNames] = useState(new Map());
-  const [menu, setMenu] = useState(null); // null | 'options' | 'move'
+  const [vehicles, setVehicles] = useState([]); // the Garage
+  const [menu, setMenu] = useState(null); // null | 'options' | 'move' | 'vehicle'
   const [highlight, setHighlight] = useState(null); // point under the finger on a chart
-  const { photos } = usePhotos(drive?.startedAt, drive?.endedAt);
+  const { photos } = usePhotos(drive && [[drive.startedAt, drive.endedAt]]);
   const roadTotals = useRoadTotals();
   const scrollRef = useRef(null);
   const mapRef = useRef(null);
@@ -63,14 +65,14 @@ export default function DriveScreen() {
     (async () => {
       const d = await getDrive(Number(id));
       if (cancelled || !d) return;
-      const [p, t, roads, names] = await Promise.all([
+      const [p, t, roads, garage] = await Promise.all([
         getDrivePoints(d.id),
         getTrip(d.tripId),
         getDriveCompletions(d.id),
-        getVehicleNames(),
+        listVehicles(),
       ]);
       if (cancelled) return;
-      setVehicleNames(names);
+      setVehicles(garage);
       setDrive(d);
       setPoints(p);
       setTrip(t);
@@ -111,16 +113,27 @@ export default function DriveScreen() {
     );
   }
 
+  const vehicle = vehicles.find((v) => v.id === drive.vehicleId) ?? null;
+  const chooseVehicle = (vehicleId) => {
+    setMenu(null);
+    setDriveVehicle(drive.id, vehicleId)
+      .then(() => setDrive((prev) => ({ ...prev, vehicleId })))
+      .catch((err) => console.warn('[drive] vehicle change failed', err));
+  };
   const multiDay = groupIntoDays(trip.drives).length > 1;
   const earlier = trip.drives.filter((d) => d.startedAt < drive.startedAt);
   const dayNumber = dayNumberFor(earlier, drive.startedAt);
   const color = multiDay ? dayColorFor(c, dayNumber) : c.accent;
+  // "DRIVE 2 OF 3 ·" first: which drive of its trip this is, so it can't be mistaken for the trip.
+  const total = trip.drives.length;
+  const driveNumber = trip.drives.findIndex((d) => d.id === drive.id) + 1;
   const kicker = (
-    multiDay
+    (total > 1 ? `Drive ${driveNumber} of ${total} · ` : 'Drive · ') +
+    (multiDay
       ? `Day ${dayNumber} · ${formatDayDate(drive.startedAt)}`
       : drive.stats.timesHidden
         ? formatDayDate(drive.startedAt)
-        : `${formatDayDate(drive.startedAt)} · ${formatTime(drive.startedAt)}`
+        : `${formatDayDate(drive.startedAt)} · ${formatTime(drive.startedAt)}`)
   ).toUpperCase();
 
   // A drive that is just an Iconic Road (starts and ends at its gates) shows no times.
@@ -200,6 +213,18 @@ export default function DriveScreen() {
         ]}
         onClose={() => setMenu(null)}
       />
+      <ActionSheet
+        visible={menu === 'vehicle'}
+        title="Vehicle for this drive"
+        actions={vehicles.map((v) => ({
+          key: String(v.id),
+          label: vehicleLabel(v),
+          detail: v.registration,
+          selected: v.id === drive.vehicleId,
+          onPress: () => chooseVehicle(v.id),
+        }))}
+        onClose={() => setMenu(null)}
+      />
       <MoveDriveSheet
         visible={menu === 'move'}
         drive={drive}
@@ -211,11 +236,16 @@ export default function DriveScreen() {
       <TitleBlock
         kicker={kicker}
         title={routeLabel(drive.places) ?? formatDate(drive.startedAt)}
-        subtitle={tripTitle(trip)}
+        parent={{
+          name: tripTitle(trip) ?? formatDate(trip.drives[0].startedAt),
+          // Back to the trip if it's open underneath, else open it.
+          onPress: () => router.navigate(`/trips/${trip.id}`),
+        }}
       />
       <HeroStats
         stats={drive.stats}
         units={units}
+        avgSpeedMps={averageMovingSpeed(drive.stats)}
         timesHidden={hideTimes}
         roadCount={new Set(roadsShown.map((r) => r.roadId)).size}
         countryCount={countries.length}
@@ -246,13 +276,17 @@ export default function DriveScreen() {
         speedHidden={hideTimes}
         markers={chartMarkers}
       />
+      <VehicleSection
+        vehicle={vehicle}
+        // Something to change to: another vehicle, or any when none is set.
+        onChange={vehicles.some((v) => v !== vehicle) ? () => setMenu('vehicle') : null}
+      />
       <DetailsRows
         stats={drive.stats}
         elapsedMs={driveElapsedMs(drive)}
         units={units}
         timesHidden={hideTimes}
         subtitle="This drive"
-        extraRows={vehicleRows([drive], vehicleNames)}
       />
     </DetailLayout>
   );

@@ -5,21 +5,28 @@ import { Linking } from 'react-native';
 import { getPhotoAccess, getPhotosBetween, requestPhotoAccess } from '../services/photoService';
 
 /**
- * Gallery photos taken between `from` and `to` (ms). Never prompts by itself:
+ * Gallery photos taken during any of `spans` ([[from, to]] in ms, e.g. one per
+ * drive), oldest first. Never prompts by itself:
  * { access: null (loading) | 'granted' | 'ask' | 'blocked', photos, allow() }.
  * allow() asks for access, or opens Settings once asking is no longer possible.
  */
-export function usePhotos(from, to) {
+export function usePhotos(spans) {
   const [access, setAccess] = useState(null);
   const [photos, setPhotos] = useState([]);
+  // Callers build a new array each render; compare by value.
+  const spansKey = JSON.stringify(spans?.filter(([from, to]) => from != null && to != null) ?? []);
 
   const load = useCallback(
     async (nextAccess) => {
       setAccess(nextAccess);
-      if (nextAccess !== 'granted' || from == null || to == null) return;
-      setPhotos(await getPhotosBetween(from, to));
+      const ranges = JSON.parse(spansKey);
+      if (nextAccess !== 'granted' || ranges.length === 0) return;
+      const found = await Promise.all(ranges.map(([from, to]) => getPhotosBetween(from, to)));
+      // Spans can overlap or touch, so drop repeats.
+      const byId = new Map(found.flat().map((p) => [p.id, p]));
+      setPhotos([...byId.values()].sort((a, b) => a.time - b.time));
     },
-    [from, to]
+    [spansKey]
   );
 
   useFocusEffect(

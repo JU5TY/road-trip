@@ -4,7 +4,6 @@ import { FlatList, Text, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import RecordingBar from '../components/RecordingBar';
-import { showDialog } from '../components/ui/DialogHost';
 import TripCard from '../components/TripCard';
 import Button from '../components/ui/Button';
 import Icon from '../components/ui/Icon';
@@ -13,10 +12,10 @@ import { useSettings } from '../context/SettingsContext';
 import { useRoadCounts } from '../hooks/useRoadCounts';
 import { useStyles, useTheme } from '../hooks/useTheme';
 import { ensureDrivePlaces } from '../services/placeService';
-import { deleteTrip, listTrips } from '../storage/tripStorage';
+import { listTrips } from '../storage/tripStorage';
 import { radius, spacing, type } from '../theme';
-import { distanceParts, formatDate } from '../utils/format';
-import { computeTotals, deleteTripMessage } from '../utils/tripSummary';
+import { distanceParts } from '../utils/format';
+import { computeTotals } from '../utils/tripSummary';
 
 /** "November", or "November 2025" outside the current year. */
 function monthLabel(ts, thisYear) {
@@ -120,16 +119,6 @@ export default function PastTripsScreen() {
 
   const rows = useMemo(() => withMonthHeaders(trips ?? []), [trips]);
 
-  const confirmDelete = (trip) =>
-    showDialog({
-      title: 'Delete this trip?',
-      message: deleteTripMessage(trip, formatDate(trip.drives[0].startedAt)),
-      confirmLabel: 'Delete',
-      destructive: true,
-      onConfirm: () =>
-        deleteTrip(trip.id).then(() => setTrips((prev) => prev.filter((t) => t.id !== trip.id))),
-    });
-
   const header = (
     <View>
       <Text style={[type.headline, styles.h1]} role="heading">
@@ -157,7 +146,6 @@ export default function PastTripsScreen() {
             trip={item.trip}
             units={units}
             roadCount={showIconicRoads ? (roadCounts.get(item.trip.id) ?? 0) : 0}
-            onLongPress={() => confirmDelete(item.trip)}
           />
         )
       }

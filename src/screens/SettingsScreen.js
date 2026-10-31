@@ -6,6 +6,7 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { showMessage } from '../components/ui/DialogHost';
 import ActionSheet from '../components/ActionSheet';
+import RegistrationTag from '../components/RegistrationTag';
 import VehicleSheet from '../components/VehicleSheet';
 import Icon from '../components/ui/Icon';
 import ListRow from '../components/ui/ListRow';
@@ -17,12 +18,13 @@ import { useRoadTotals } from '../hooks/useRoadTotals';
 import { useStyles, useTheme } from '../hooks/useTheme';
 import { useVehicles } from '../hooks/useVehicles';
 import { BREAK_REMINDER_OPTIONS } from '../storage/settingsStorage';
-import { addVehicle, deleteVehicle, renameVehicle } from '../storage/vehicleStorage';
+import { addVehicle, deleteVehicle, updateVehicle } from '../storage/vehicleStorage';
 import { spacing, type } from '../theme';
 import { comingSoon } from '../utils/comingSoon';
 import { distanceParts, formatBreakReminder } from '../utils/format';
 import { COUNTRIES_ATTRIBUTION } from '../utils/countries';
 import { ICONIC_ROADS, ROADS_ATTRIBUTION } from '../utils/iconicRoads';
+import { vehicleLabel } from '../utils/vehicles';
 
 const UNIT_LABELS = { metric: 'Kilometres', imperial: 'Miles' };
 const THEMES = [
@@ -102,10 +104,10 @@ export default function SettingsScreen() {
   // Free: one vehicle in the Garage; Premium: as many as you like.
   const canAddVehicle = premium || !vehicles?.length;
 
-  const saveVehicle = async (name) => {
+  const saveVehicle = async (fields) => {
     try {
-      if (editing === 'new') await addVehicle(name);
-      else await renameVehicle(editing.id, name);
+      if (editing === 'new') await addVehicle(fields);
+      else await updateVehicle(editing.id, fields);
     } catch (err) {
       console.warn('[garage] save failed', err);
     }
@@ -145,6 +147,7 @@ export default function SettingsScreen() {
       <VehicleSheet
         visible={editing !== null}
         vehicle={editing === 'new' ? null : editing}
+        others={(vehicles ?? []).filter((v) => v !== editing)}
         onSave={saveVehicle}
         onDelete={removeVehicle}
         onClose={() => setEditing(null)}
@@ -164,7 +167,10 @@ export default function SettingsScreen() {
               <Icon name="directions_car" filled size={22} color={c.onAccentContainer} />
             </View>
           }
-          title={v.name}
+          title={vehicleLabel(v)}
+          titleAccessory={
+            v.registration ? <RegistrationTag registration={v.registration} /> : null
+          }
           subtitle={vehicleSubtitle(v, units)}
           onPress={() => setEditing(v)}
           style={styles.vehicleRow}

@@ -10,7 +10,8 @@ import Icon from './Icon';
  * `divider` draws the hairline under all but the last row of a group.
  * `strongValue` shows the value as a stat (dark, semibold) rather than a setting.
  * `leading` replaces the icon (e.g. the Garage's round icon well); `titleStyle`
- * restyles the title; `dense` is the 52px row of Details cards.
+ * restyles the title; `titleAccessory` sits after it (a registration tag);
+ * `dense` is the 52px row of Details cards.
  */
 export default function ListRow({
   icon,
@@ -26,6 +27,7 @@ export default function ListRow({
   accessibilityState,
   leading,
   titleStyle,
+  titleAccessory,
   dense = false,
   style,
 }) {
@@ -36,9 +38,12 @@ export default function ListRow({
     <>
       {leading ?? (icon ? <Icon name={icon} size={22} color={c.accent} /> : null)}
       <View style={styles.text}>
-        <Text style={[type.bodyLarge, styles.title, titleStyle]} numberOfLines={1}>
-          {title}
-        </Text>
+        <View style={styles.titleRow}>
+          <Text style={[type.bodyLarge, styles.title, titleStyle, styles.shrink]} numberOfLines={1}>
+            {title}
+          </Text>
+          {titleAccessory}
+        </View>
         {subtitle ? (
           <Text style={[type.small, styles.muted]} numberOfLines={1}>
             {subtitle}
@@ -84,7 +89,9 @@ const makeStyles = (c) => ({
   dense: { minHeight: 52, paddingVertical: 0 },
   divider: { borderBottomWidth: 1, borderBottomColor: c.divider },
   text: { flex: 1, minWidth: 0 },
+  titleRow: { flexDirection: 'row', alignItems: 'center', gap: 8 },
   title: { color: c.text },
+  shrink: { flexShrink: 1 },
   muted: { color: c.textMuted },
   pressed: { opacity: 0.6 },
 });

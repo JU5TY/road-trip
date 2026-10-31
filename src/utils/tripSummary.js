@@ -88,7 +88,7 @@ export const firstDriveMonth = (trips) =>
     { month: 'long', year: 'numeric' }
   );
 
-/** Body of the "Delete this trip?" dialog (Trips list and the Trip page). */
+/** Body of the "Delete this trip?" dialog on the Trip page. */
 export function deleteTripMessage(trip, fallbackName) {
   const name = tripTitle(trip) ?? fallbackName;
   const count = trip.drives.length;

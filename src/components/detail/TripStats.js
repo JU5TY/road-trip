@@ -6,7 +6,10 @@ import {
   distanceParts,
   elevationParts,
   formatDurationShort,
+  formatElevation,
   formatSpeed,
+  speedUnit,
+  toSpeed,
 } from '../../utils/format';
 import { averageMovingSpeed } from '../../utils/geoMath';
 import Icon from '../ui/Icon';
@@ -14,8 +17,13 @@ import ListRow from '../ui/ListRow';
 import SectionHeader from '../ui/SectionHeader';
 import StatCard from '../ui/StatCard';
 
-/** Green caps line, title, grey subtitle and optional notes. Tapping it calls onPress (edit). */
-export function TitleBlock({ kicker, title, subtitle, notes, onPress }) {
+/**
+ * Green caps line, title, grey subtitle and optional notes. Tapping it calls
+ * onPress (edit). `parent` ({ name, onPress }) adds a "Part of <name> ›" link
+ * under the title, from a drive to its trip.
+ */
+export function TitleBlock({ kicker, title, subtitle, notes, parent, onPress }) {
+  const { c } = useTheme();
   const styles = useStyles(makeStyles);
   return (
     <Pressable
@@ -26,6 +34,20 @@ export function TitleBlock({ kicker, title, subtitle, notes, onPress }) {
       <Text style={[type.kicker, styles.kicker]}>{kicker}</Text>
       <Text style={[type.title, styles.title]}>{title}</Text>
       {subtitle ? <Text style={[type.body, styles.subtitle]}>{subtitle}</Text> : null}
+      {parent ? (
+        <Pressable
+          onPress={parent.onPress}
+          accessibilityRole="link"
+          accessibilityLabel={`Part of ${parent.name}`}
+          style={({ pressed }) => [styles.parent, pressed && styles.pressed]}
+        >
+          <Text style={[type.body, styles.parentPrefix]}>Part of </Text>
+          <Text style={[type.button, styles.parentName]} numberOfLines={1}>
+            {parent.name}
+          </Text>
+          <Icon name="chevron_right" size={20} color={c.accent} />
+        </Pressable>
+      ) : null}
       {notes ? <Text style={[type.body, styles.notes]}>{notes}</Text> : null}
     </Pressable>
   );
@@ -33,17 +55,31 @@ export function TitleBlock({ kicker, title, subtitle, notes, onPress }) {
 
 /**
  * Hero distance, Iconic Roads and rest-stops chips, and the bento grid (Driving
- * time, Highest point, Elevation gain). `stats` is a drive's stats or a
- * summarizeDrives() result. `timesHidden` swaps Driving time for a note (a
- * drive that starts and ends at an Iconic Road); `roadCount` and `countryCount`
- * (shown from 2) add chips.
+ * time, Highest point, Avg speed). `stats` is a drive's stats or a
+ * summarizeDrives() result; `avgSpeedMps` comes separately because a trip's
+ * leaves out drives whose times are hidden. `timesHidden` swaps Driving time for
+ * a note and Avg speed for Elevation gain (a drive that starts and ends at an
+ * Iconic Road); `roadCount` and `countryCount` (shown from 2) add chips.
+ * A `trip` keeps only Driving time and no stops chip: over several drives the
+ * highest point, average speed and stops are details, not headlines
+ * (DetailsRows lists them).
  */
-export function HeroStats({ stats, units, timesHidden = false, roadCount = 0, countryCount = 0 }) {
+export function HeroStats({
+  stats,
+  units,
+  avgSpeedMps,
+  timesHidden = false,
+  trip = false,
+  roadCount = 0,
+  countryCount = 0,
+}) {
   const { c } = useTheme();
   const styles = useStyles(makeStyles);
   const distance = distanceParts(stats.distanceM, units);
   const highest = elevationParts(stats.maxAltitudeM, units);
   const gain = elevationParts(stats.elevationGainM, units);
+  // A drive's stops are a headline; a trip's are in its Details.
+  const stopChip = !trip && stats.stopCount > 0;
 
   return (
     <>
@@ -55,7 +91,7 @@ export function HeroStats({ stats, units, timesHidden = false, roadCount = 0, co
         <Text style={styles.heroValue}>{distance.value}</Text>
         <Text style={styles.heroUnit}>{distance.unit}</Text>
       </View>
-      {stats.stopCount > 0 || roadCount > 0 || countryCount > 1 ? (
+      {stopChip || roadCount > 0 || countryCount > 1 ? (
         <View style={styles.chips}>
           {roadCount > 0 ? (
             <View style={[styles.chip, styles.chipRoads]}>
@@ -65,7 +101,7 @@ export function HeroStats({ stats, units, timesHidden = false, roadCount = 0, co
               </Text>
             </View>
           ) : null}
-          {stats.stopCount > 0 ? (
+          {stopChip ? (
             <View style={styles.chip}>
               <Icon name="local_cafe" size={18} color={c.textMuted} />
               <Text style={[type.label, styles.chipText]}>
@@ -93,22 +129,34 @@ export function HeroStats({ stats, units, timesHidden = false, roadCount = 0, co
             value={formatDurationShort(stats.movingTimeMs)}
           />
         )}
-        <View style={styles.row}>
-          <StatCard
-            style={styles.half}
-            icon="landscape"
-            label="Highest point"
-            value={highest.value}
-            unit={highest.unit}
-          />
-          <StatCard
-            style={styles.half}
-            icon="trending_up"
-            label="Elevation gain"
-            value={gain.value}
-            unit={gain.unit}
-          />
-        </View>
+        {trip ? null : (
+          <View style={styles.row}>
+            <StatCard
+              style={styles.half}
+              icon="landscape"
+              label="Highest point"
+              value={highest.value}
+              unit={highest.unit}
+            />
+            {timesHidden ? (
+              <StatCard
+                style={styles.half}
+                icon="trending_up"
+                label="Elevation gain"
+                value={gain.value}
+                unit={gain.unit}
+              />
+            ) : (
+              <StatCard
+                style={styles.half}
+                icon="speed"
+                label="Avg speed"
+                value={String(Math.round(toSpeed(avgSpeedMps, units)))}
+                unit={speedUnit(units)}
+              />
+            )}
+          </View>
+        )}
       </View>
     </>
   );
@@ -134,18 +182,11 @@ function TimesHiddenCard() {
 }
 
 /**
- * The "Vehicle" Details row for some drives, as extraRows: the vehicle's name,
- * or "2 vehicles" when they differ. None when no drive names a vehicle.
- */
-export function vehicleRows(drives, names) {
-  const used = [...new Set(drives.map((d) => names.get(d.vehicleId)).filter(Boolean))];
-  if (used.length === 0) return [];
-  return [['directions_car', 'Vehicle', used.length === 1 ? used[0] : `${used.length} vehicles`]];
-}
-
-/**
- * "Details" rows: time first, speed last (Max speed stays low-key). With
- * `timesHidden` only the rest-stop count is left. `hiddenNote` explains that
+ * "Details" rows: time first, speed last (Max speed stays low-key; Avg speed
+ * is a tile above). With `timesHidden` only the rest-stop count is left. Rest
+ * stops is left out when there are none, Longest stretch when it's just the
+ * moving time again (or unknown), and the section when no rows are left. A
+ * `trip` also lists Highest point and Avg speed, which its tiles leave out. `hiddenNote` explains that
  * some drives' times were left out of a trip's totals.
  */
 export function DetailsRows({
@@ -153,54 +194,40 @@ export function DetailsRows({
   elapsedMs,
   units,
   timesHidden = false,
+  trip = false,
   hiddenNote,
   subtitle,
-  extraRows = [],
 }) {
   const styles = useStyles(makeStyles);
-  if (timesHidden) {
-    return (
-      <>
-        <SectionHeader title="Details" subtitle={subtitle} />
-        <View style={styles.group}>
-          {extraRows.map(([icon, title, value]) => (
-            <ListRow
-              key={title}
-              icon={icon}
-              title={title}
-              value={value}
-              strongValue
-              divider
-              dense
-            />
-          ))}
-          <ListRow
-            icon="local_cafe"
-            title="Rest stops"
-            value={stats.stopCount > 0 ? String(stats.stopCount) : 'None'}
-            strongValue
-            dense
-          />
-        </View>
-      </>
-    );
-  }
+  const hasStops = stats.stopCount > 0;
   // Drives recorded before this stat existed don't have it.
-  const longest = stats.longestStintMs == null ? '—' : formatDurationShort(stats.longestStintMs);
-  const rows = [
-    ...extraRows,
-    ['schedule', 'Elapsed time', formatDurationShort(elapsedMs)],
-    ['hourglass_top', 'Longest stretch', longest],
-    [
-      'local_cafe',
-      'Rest stops',
-      stats.stopCount > 0
-        ? `${stats.stopCount} · ${formatDurationShort(stats.totalStopMs)}`
-        : 'None',
-    ],
-    ['speed', 'Avg speed', formatSpeed(averageMovingSpeed(stats), units)],
-    ['bolt', 'Max speed', formatSpeed(stats.topSpeedMps, units)],
-  ];
+  const longest = stats.longestStintMs == null ? null : formatDurationShort(stats.longestStintMs);
+  const showLongest = longest != null && longest !== formatDurationShort(stats.movingTimeMs);
+  const highest = ['landscape', 'Highest point', formatElevation(stats.maxAltitudeM, units)];
+  const gain = ['trending_up', 'Elevation gain', formatElevation(stats.elevationGainM, units)];
+  const rows = timesHidden
+    ? [
+        ...(hasStops ? [['local_cafe', 'Rest stops', String(stats.stopCount)]] : []),
+        ...(trip ? [highest, gain] : []),
+      ]
+    : [
+        ['schedule', 'Elapsed time', formatDurationShort(elapsedMs)],
+        ...(showLongest ? [['hourglass_top', 'Longest stretch', longest]] : []),
+        ...(hasStops
+          ? [
+              [
+                'local_cafe',
+                'Rest stops',
+                `${stats.stopCount} · ${formatDurationShort(stats.totalStopMs)}`,
+              ],
+            ]
+          : []),
+        ...(trip ? [highest] : []),
+        gain,
+        ...(trip ? [['speed', 'Avg speed', formatSpeed(averageMovingSpeed(stats), units)]] : []),
+        ['bolt', 'Max speed', formatSpeed(stats.topSpeedMps, units)],
+      ];
+  if (rows.length === 0) return null;
   return (
     <>
       <SectionHeader title="Details" subtitle={subtitle} />
@@ -228,6 +255,18 @@ const makeStyles = (c) => ({
   kicker: { color: c.accent, marginHorizontal: 4 },
   title: { color: c.text, marginTop: 4, marginHorizontal: 4 },
   subtitle: { color: c.textMuted, marginTop: 2, marginHorizontal: 4 },
+  // 44px tall for the finger, pulled in so the text sits where a subtitle would.
+  parent: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    alignSelf: 'flex-start',
+    minHeight: 44,
+    marginVertical: -10,
+    marginHorizontal: 4,
+  },
+  parentPrefix: { color: c.textMuted },
+  parentName: { color: c.accent, flexShrink: 1 },
+  pressed: { opacity: 0.6 },
   notes: { color: c.text, marginTop: 10, marginHorizontal: 4 },
   hero: {
     flexDirection: 'row',

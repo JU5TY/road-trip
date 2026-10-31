@@ -98,7 +98,7 @@ function GapRow({ item, color, units, hideTimes, roads = [] }) {
     : isSea
       ? `${seaName}${seaDistance}${duration}`
       : item.type === 'break'
-        ? `Break, not recording${duration}`
+        ? `Break${duration}`
         : `Overnight${item.place ? ` in ${item.place}` : ''}${duration}`;
 
   return (

@@ -17,14 +17,7 @@ import Icon from './ui/Icon';
  * the large card's map for a placeholder while the screen is in the background. `roadCount` adds an
  * Iconic Roads chip. Drives whose times are hidden are left out of the time.
  */
-export default function TripCard({
-  trip,
-  units,
-  variant = 'row',
-  showMap = true,
-  onLongPress,
-  roadCount = 0,
-}) {
+export default function TripCard({ trip, units, variant = 'row', showMap = true, roadCount = 0 }) {
   const { c } = useTheme();
   const styles = useStyles(makeStyles);
   const segments = useTripPreview(trip);
@@ -60,33 +53,42 @@ export default function TripCard({
     // Android, which collapsed the card's row layout.
     <Pressable
       onPress={() => router.push(`/trips/${trip.id}`)}
-      onLongPress={onLongPress}
       accessibilityRole="link"
-      style={({ pressed }) => [large ? styles.large : styles.row, pressed && styles.pressed]}
+      style={({ pressed }) => [
+        large ? styles.large : styles.row,
+        pressed && !large && styles.pressed,
+      ]}
     >
-      {large ? <RoutePreview segments={segments ?? []} height={180} active={showMap} /> : null}
-      <View style={large ? styles.largeText : styles.rowText}>
-        <Text style={[type.caps, styles.kicker]} numberOfLines={1}>
-          {tripKicker(first.startedAt, last.endedAt, dayCount)}
-        </Text>
-        <Text style={[large ? type.section : styles.rowTitle, styles.title]} numberOfLines={1}>
-          {tripTitle(trip) ?? formatDate(first.startedAt)}
-        </Text>
-        <View style={large ? styles.metaRow : null}>
-          <Text style={[large ? type.body : styles.rowMeta, styles.muted]} numberOfLines={1}>
-            {formatDistance(summary.distanceM, units, summary.distanceM < 100000 ? 1 : 0)}
-            {timed.length > 0 ? ` · ${formatDurationShort(movingTimeMs)}` : ''}
-          </Text>
-          {large ? roadChip : null}
-        </View>
-        {!large && (roadChip || countryChip) ? (
-          <View style={styles.chipBelow}>
-            {roadChip}
-            {countryChip}
+      {({ pressed }) => (
+        <>
+          {large ? <RoutePreview segments={segments ?? []} height={180} active={showMap} /> : null}
+          {/* The large card fades only its text: a faded map shows the card's shadow through it. */}
+          <View style={large ? [styles.largeText, pressed && styles.pressed] : styles.rowText}>
+            <Text style={[type.caps, styles.kicker]} numberOfLines={1}>
+              {tripKicker(first.startedAt, last.endedAt, dayCount)}
+            </Text>
+            <Text style={[large ? type.section : styles.rowTitle, styles.title]} numberOfLines={1}>
+              {tripTitle(trip) ?? formatDate(first.startedAt)}
+            </Text>
+            <View style={large ? styles.metaRow : null}>
+              <Text style={[large ? type.body : styles.rowMeta, styles.muted]} numberOfLines={1}>
+                {formatDistance(summary.distanceM, units, summary.distanceM < 100000 ? 1 : 0)}
+                {timed.length > 0 ? ` · ${formatDurationShort(movingTimeMs)}` : ''}
+                {/* One drive a day goes without saying; more shows it's a trip, not a drive. */}
+                {trip.drives.length > dayCount ? ` · ${trip.drives.length} drives` : ''}
+              </Text>
+              {large ? roadChip : null}
+            </View>
+            {!large && (roadChip || countryChip) ? (
+              <View style={styles.chipBelow}>
+                {roadChip}
+                {countryChip}
+              </View>
+            ) : null}
           </View>
-        ) : null}
-      </View>
-      {large ? null : <RouteThumb segments={segments ?? []} />}
+          {large ? null : <RouteThumb segments={segments ?? []} />}
+        </>
+      )}
     </Pressable>
   );
 }
